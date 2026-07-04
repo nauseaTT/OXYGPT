@@ -7,6 +7,8 @@ This module contains the core message processing pipeline:
 - `pending_message_handler`: The central message router. Handles all
   incoming user messages: pending state actions (window creation, rename,
   lock/block data), AI question processing, and group message filtering.
+  - `_process_reply_ask`: Stateless reply-to-ask handler. Processes a formatted
+  message (user text + reply chain) without saving to conversation history.
 - `retry_failed_handler`: Retries a previously failed AI request.
 - `inline_handler`: Handles direct mentor-mode messages via inline buttons.
 - `again_talk_mentor` / `again_talk_quickask`: "Send message" button
@@ -314,6 +316,207 @@ async def _send_response(
 # ── Handler Functions ─────────────────────────────────────────────────
 
 
+async def _process_reply_ask(
+    self: "TelegramBot",
+    event: Any,
+    formatted_text: str,
+    user_text: str,
+    reply_chain: list,
+    image_data: Optional[bytes] = None,
+) -> None:
+    """Process a stateless reply-to-ask request.
+
+    Handles the complete flow for the reply-to-ask feature:
+    membership/limit validation, stateless ``AI_Service`` creation,
+    AI generation with the reply-ask system prompt suffix, and
+    response delivery via ``_send_response``.
+
+    The key difference from the standard quick-ask flow:
+    - No conversation window is touched (``window_id=None``).
+    - History is wiped before the AI call and never persisted to DB.
+    - The system role receives ``REPLY_ASK_SYSTEM_SUFFIX`` to adjust
+      the model's behaviour for this stateless, third-person context.
+    - Usage is still counted against the quick-ask pool (same
+      ``check_user_limits`` and ``_update_usage`` paths).
+
+    On failure, a plain error message is shown **without** a retry
+    button — the user can simply re-type ``/ask``.  This avoids the
+    complexity of adapting ``retry_failed_handler`` for the stateless
+    path and keeps the retry surface simple.
+
+    Args:
+        self: TelegramBot instance.
+        event: Incoming message or callback event.
+        formatted_text: The fully formatted message text for the AI
+            (user text + reply chain blocks).
+        user_text: The user's original text after ``/ask`` (may be empty).
+        reply_chain: The resolved reply chain from ``resolve_reply_chain()``.
+        image_data: Optional image bytes from the replied message or
+            from the ``/ask`` event itself.
+    """
+    uid = event.sender_id
+    chat_id = getattr(event, 'chat_id', None)
+
+    # ── Concurrency guard ──
+    if uid in self.processing_users:
+        return
+    self.processing_users.add(uid)
+
+    try:
+        # ── Membership check ──
+        not_joined = await self.check_user_joined(uid)
+        if not_joined:
+            await self.send_join_warning(event, not_joined)
+            return
+
+        # ── Block checks ──
+        if uid not in self.admin_ids and self.check_user_blocked(uid):
+            await event.reply("⛔️ شما توسط ادمین از دسترسی به ربات مسدود شده‌اید.")
+            return
+
+        if chat_id and chat_id < 0 and self.check_group_blocked(chat_id):
+            return
+
+        # ── Rate limit check ──
+        is_limited, limit_msg = self.check_user_limits(uid)
+        if is_limited:
+            await self.send_limit_notification(event, limit_msg, is_callback=False)
+            return
+
+        # ── 80% soft warning ──
+        is_80, alert_msg = self.check_user_80_percent_limit(uid, trigger_alert=True)
+        if is_80 and alert_msg:
+            await event.reply(alert_msg)
+
+        # ── Build stateless AI_Service ──
+        # We create the service with mode="quick_ask" so that provider/model
+        # resolution is identical to a normal quick-ask request.  Immediately
+        # after construction we override window_id and history to prevent any
+        # interaction with the user's stored conversation windows.
+        from api_http import get_service_manager, get_active_provider
+
+        service_id = None
+        if get_active_provider(self.db) == "openai":
+            default_svc = self.db.get_setting("default_openai_service", "")
+            if default_svc and get_service_manager(self.db).has_service(default_svc):
+                service_id = default_svc
+
+        ai_service = AI_Service(
+            uid, db_manager=self.db, mode="quick_ask",
+            chat_id=chat_id, service_id=service_id,
+        )
+        # Stateless override: no window, no history
+        ai_service.window_id = None
+        ai_service.history = []
+
+        # ── Typing indicator ──
+        try:
+            from telethon.tl.functions.messages import SetTypingRequest
+            from telethon.tl.types import SendMessageTypingAction
+            await self.bot(SetTypingRequest(
+                peer=event.chat_id,
+                action=SendMessageTypingAction(),
+            ))
+        except Exception:
+            pass
+
+        # ── Status message ──
+        msg = await event.reply(
+            "📎 بررسی پیام مورد نظر...",
+            buttons=[Button.inline("لغو درخواست", b"clear_processing", style="danger")],
+        )
+
+        animator = None
+        try:
+            role = DEFAULT_SYSTEM_ROLE
+
+            animator = StatusAnimator(msg, skill_key="default")
+            await animator.start()
+
+            async def on_status_change(status_text: str):
+                if animator:
+                    animator.update_step(status_text)
+
+            async def on_tool_call(tool_event: ToolEvent):
+                if animator:
+                    animator.update_tool(tool_event)
+
+            self.active_requests[uid] = {
+                "generation_started": False,
+                "msg": msg,
+                "task": asyncio.current_task(),
+                "animator": animator,
+                "cancel_requested": False,
+            }
+
+            async def on_generation_start():
+                if uid in self.active_requests:
+                    self.active_requests[uid]["generation_started"] = True
+
+            tlogger.info(
+                f"[REPLY_ASK] uid={uid}, chat_id={chat_id}, "
+                f"has_image={image_data is not None}, chain_length={len(reply_chain)}"
+            )
+
+            answer, tokens_used = await ai_service.handle_message(
+                user_message=formatted_text,
+                role=role,
+                mode="reply_ask",
+                on_status_change=on_status_change,
+                on_generation_start=on_generation_start,
+                on_tool_call=on_tool_call,
+                image_data=image_data,
+            )
+
+            self.last_tokens[uid] = tokens_used
+
+            if animator:
+                await animator.stop()
+
+            # ── Build response buttons ──
+            buttons = [
+                [
+                    Button.inline(
+                        f"💬 Reply Ask | 🪙 {tokens_used:,}",
+                        b"place_holder",
+                    )
+                ],
+            ]
+
+            await _send_response(msg, event, ai_service, answer, buttons, uid)
+
+        except asyncio.CancelledError:
+            tlogger.info(f"Reply-ask request for user {uid} was cancelled.")
+            await _restore_previous_ai_buttons(self, uid)
+            raise
+        except Exception as e:
+            tlogger.error(f"Reply-ask failed for {uid}: {e}")
+            await _restore_previous_ai_buttons(self, uid)
+            if animator:
+                try:
+                    await animator.stop()
+                    animator = None
+                except Exception:
+                    pass
+            try:
+                await msg.edit(
+                    "پردازش درخواست با خطا مواجه شد. لطفا مجددا /ask را استفاده کنید.",
+                )
+            except Exception:
+                await event.reply(
+                    "پردازش درخواست با خطا مواجه شد. لطفا مجددا /ask را استفاده کنید.",
+                )
+        finally:
+            if animator:
+                try:
+                    await animator.stop()
+                except Exception:
+                    pass
+            self.active_requests.pop(uid, None)
+    finally:
+        self.processing_users.discard(uid)
+
+
 async def pending_message_handler(self: "TelegramBot", event: Any) -> None:
     """Central message router for all incoming user messages.
 
@@ -381,13 +584,21 @@ async def pending_message_handler(self: "TelegramBot", event: Any) -> None:
     # Deleting state here was the root cause of Bug [#1]: after /ask
     # set pending_question=True, this catch-all would immediately wipe
     # it, causing subsequent user text to be silently ignored.
-    if event.text and event.text.strip() in ("/start", "اکسی", "/cancel", "/arise",
-                                "/w", "/sw", "/new", "/clear",
-                                "/ask", "/learn", "/code", "/deep",
-                                "/micheal", "/daye", "/zeussy", "/albrooks",
-                                "/status", "/help",
-                                "\U0001f4ca \u0698\u0648\u0631\u0646\u0627\u0644 \u0645\u0639\u0627\u0645\u0644\u0627\u062a"):
-        return
+        #
+    # NOTE: We use the first word (split on space) so that commands
+    # with inline text (e.g. "/ask something") also match the same
+    # early-return set as bare commands.  This is critical for the
+    # reply-to-ask feature where ask_cmd handles the inline text
+    # and pending_message_handler must NOT also process the event.
+    if event.text and event.text.strip():
+        _cmd_text = event.text.strip().split(maxsplit=1)[0]
+        if _cmd_text in ("/start", "اکسی", "/cancel", "/arise",
+                         "/w", "/sw", "/new", "/clear",
+                         "/ask", "/learn", "/code", "/deep",
+                         "/micheal", "/daye", "/zeussy", "/albrooks",
+                         "/status", "/help",
+                         "\U0001f4ca \u0698\u0648\u0631\u0646\u0627\u0644 \u0645\u0639\u0627\u0645\u0644\u0627\u062a"):
+            return
 
     if uid in self.processing_users:
         return

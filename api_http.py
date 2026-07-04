@@ -81,6 +81,15 @@ TOOL_TIMEOUT_MARKET: float = 20.0       # market data fetch
 TOOL_TIMEOUT_HTML: float = 60.0         # HTML booklet generation
 TOOL_TIMEOUT_OVERALL: float = 300.0     # entire generate_response
 
+# Stateless reply-ask system prompt suffix (appended to DEFAULT_SYSTEM_ROLE).
+# Instructs the model to answer concisely in third-person/general style, since
+# the user is replying to someone else's message rather than starting a
+# first-person conversation.
+# The formatted message now includes sender attribution (username / display name)
+# before each quoted block so the model can distinguish between different speakers.
+REPLY_ASK_SYSTEM_SUFFIX: str = """[ADDITIONAL CONTEXT]
+This query was triggered by a "reply-to-ask" action. The user may be replying to someone else's message. Keep your answer concise (2-3 paragraphs max unless analysis requires more). Respond in a general/third-person style — do not assume first-person context unless the user explicitly writes in first person. If multiple quoted blocks are present, each represents a separate message in a reply chain; do not merge them. Each quoted block is attributed to its original sender via @username (Name): prefix — use this information to understand who said what and tailor your response accordingly."""
+
 # System instructions to guide the behavior and tone of the AI assistant
 DEFAULT_SYSTEM_ROLE: str = """You are a sharp, knowledgeable, and friendly Persian-speaking AI assistant. You respond exclusively in casual, everyday Persian (محاوره‌ای فارسی) — never the stiff, formal written register (فارسی کتابی). You are warm, direct, and efficient: like a smart friend who gives straight, useful answers without fluff or robotic stiffness.
 
@@ -1782,7 +1791,7 @@ SUMMARY (Telegram HTML only):"""
         Args:
             user_message: The message sent by the user.
             role: The system instruction/role.
-            mode: The conversation mode ("quick_ask" or "mentor").
+            mode: The conversation mode ("quick_ask", "mentor", or "reply_ask").
             on_status_change: Callback to update status messages.
             on_generation_start: Callback triggered when generation starts.
             on_tool_call: Callback invoked with a ``ToolEvent`` when a
@@ -1822,20 +1831,20 @@ SUMMARY (Telegram HTML only):"""
         # Get model from service config or DB settings
         if self.service_id and get_service_manager(self.db_manager).has_service(self.service_id):
             # Use service-specific models
-            model_type = "quick_ask" if mode == "quick_ask" else ("mentors" if mode == "mentor" else "fallback")
+            model_type = "quick_ask" if mode in ("quick_ask", "reply_ask") else ("mentors" if mode == "mentor" else "fallback")
             model_to_use = get_service_manager(self.db_manager).get_model(self.service_id, model_type)
             self.search_model = get_service_manager(self.db_manager).get_model(self.service_id, "search")
         elif self.db_manager:
             self.search_model = self.db_manager.get_setting("search_model", AI_MODEL_SEARCH)
             if self.provider == "openai":
-                if mode == "quick_ask":
+                if mode in ("quick_ask", "reply_ask"):
                     model_to_use = self.db_manager.get_setting("openai_quick_ask_model", OPENAI_MODEL_FALLBACK)
                 elif mode == "mentor":
                     model_to_use = self.db_manager.get_setting("openai_mentors_model", OPENAI_MODEL_FALLBACK)
                 else:
                     model_to_use = self.db_manager.get_setting("openai_fallback_model", OPENAI_MODEL_FALLBACK)
             else:
-                if mode == "quick_ask":
+                if mode in ("quick_ask", "reply_ask"):
                     model_to_use = self.db_manager.get_setting("quick_ask_model", AI_MODEL_FALLBACK)
                 elif mode == "mentor":
                     model_to_use = self.db_manager.get_setting("mentors_model", AI_MODEL_FALLBACK)
@@ -1847,7 +1856,9 @@ SUMMARY (Telegram HTML only):"""
         # Inject current date into system role
         current_date: str = datetime.now().strftime("%Y-%m-%d")
         role = f"{role}\n\n📅 Today's date: {current_date}\nYour training data has a knowledge cutoff. Use the web search tool when you need current or up-to-date information."
-
+        if mode == "reply_ask":
+            role += f"\n\n{REPLY_ASK_SYSTEM_SUFFIX}"
+            
         if on_status_change:
             await on_status_change(" پاسخ نهایی...")
 
