@@ -1,0 +1,12 @@
+telethon
+google-generativeai
+openai
+pandas
+matplotlib
+mplfinance
+requests
+httpx
+python-dotenv
+aiosqlite
+aiohttp
+aiofiles
