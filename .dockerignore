@@ -1,0 +1,63 @@
+# ─────────────────────────────────────────────────────────────
+#  .dockerignore  —  keep the build context small & the image clean
+#  Anything listed here is NEVER sent to the Docker daemon, so it
+#  can't leak into the image and can't invalidate the build cache.
+# ─────────────────────────────────────────────────────────────
+
+# ── Version control & CI ──
+.git
+.gitignore
+.github
+
+# ── Python caches / build artifacts ──
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Secrets & local config (mounted at runtime, never baked in) ──
+.env
+.env.*
+!.env.example
+
+# ── Telegram sessions (MUST be a runtime volume, not in the image) ──
+*.session
+*.session-journal
+
+# ── Databases (persisted via named volume, not baked in) ──
+*.db
+*.db-shm
+*.db-wal
+trade_journal/journal.db*
+channel_watcher.db*
+bot_database.db*
+
+# ── Runtime-generated data ──
+logs/
+*.log
+*.png
+market_data_cache.json
+
+# ── Editor / OS noise ──
+.aider*
+.mimocode/
+.vscode/
+.idea/
+.DS_Store
+path/
+
+# ── Docs & the report itself (not needed inside the container) ──
+docs/
+*.md
+!README.md
+dockerize-report.html
+
+# ── The docker files themselves don't need to be inside the image ──
+Dockerfile
+docker-compose.yml
+.dockerignore
+deploy/*
+# …but the entrypoint MUST be inside the image (Dockerfile calls it).
+!deploy/entrypoint.sh

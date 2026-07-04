@@ -1,0 +1,44 @@
+# =============================================================================
+#  OXYGPT — Telegram AI Bot  ·  docker-compose
+# -----------------------------------------------------------------------------
+#  One service, one command:  docker compose up -d
+#
+#  Persistence strategy
+#  --------------------
+#  The bot scatters stateful files across its working dir (sessions, several
+#  SQLite DBs, logs). Instead of tracking every path, we mount ONE host
+#  folder (./data) at /app/data and let deploy/entrypoint.sh symlink each
+#  stateful file back into place on startup. Result: all state lives in
+#  ./data on the host and SURVIVES rebuilds/upgrades — nothing is lost.
+# =============================================================================
+
+services:
+  oxygpt:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: oxygpt:latest
+    container_name: oxygpt
+    restart: unless-stopped
+
+    # All secrets/config come from the .env file (never baked into the image).
+    env_file:
+      - .env
+
+    # ── Single persistent state folder (host ./data ⇄ container /app/data) ──
+    # entrypoint.sh symlinks the individual DB/session files into this folder.
+    volumes:
+      - ./data:/app/data
+
+    # ── Sensible resource ceiling so a runaway task can't eat the host ──
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+
+    # ── Log rotation so container logs never fill the disk ──
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

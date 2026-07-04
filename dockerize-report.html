@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>داکرایز کردن OXYGPT — راهنمای حرفه‌ای و کاربردی</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b1020; --bg2:#0f1629; --panel:#131c33; --panel2:#182444;
+    --border:#243357; --text:#e6ecff; --muted:#9fb0d6; --dim:#6f81ab;
+    --brand:#4f8cff; --brand2:#22d3ee; --accent:#7c5cff;
+    --green:#34d399; --amber:#fbbf24; --red:#fb7185; --pink:#f472b6;
+    --code-bg:#0a0f20; --radius:16px; --mono:'JetBrains Mono',monospace;
+    --shadow:0 20px 50px -20px rgba(0,0,0,.6);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:'Vazirmatn',system-ui,sans-serif;
+    background:radial-gradient(1200px 600px at 80% -10%,rgba(124,92,255,.15),transparent 60%),
+               radial-gradient(1000px 500px at -10% 10%,rgba(34,211,238,.12),transparent 55%),
+               var(--bg);
+    color:var(--text); line-height:1.95; font-size:16.5px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1000px;margin:0 auto;padding:0 22px}
+  a{color:var(--brand2);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* ── Progress bar ── */
+  #progress{position:fixed;top:0;left:0;height:3px;width:0;z-index:99;
+    background:linear-gradient(90deg,var(--brand),var(--brand2),var(--accent))}
+
+  /* ── Hero ── */
+  header.hero{padding:90px 0 60px;text-align:center;position:relative}
+  .badge{display:inline-flex;align-items:center;gap:8px;font-size:.8rem;
+    background:rgba(79,140,255,.12);border:1px solid var(--border);
+    color:var(--brand2);padding:7px 16px;border-radius:999px;margin-bottom:26px;
+    font-family:var(--mono);letter-spacing:.5px}
+  .badge .dot{width:8px;height:8px;border-radius:50%;background:var(--green);
+    box-shadow:0 0 12px var(--green)}
+  h1.title{font-size:clamp(2rem,5vw,3.3rem);font-weight:800;line-height:1.35;
+    background:linear-gradient(120deg,#fff 20%,var(--brand2) 55%,var(--accent) 90%);
+    -webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:18px}
+  .subtitle{color:var(--muted);font-size:1.15rem;max-width:680px;margin:0 auto 34px}
+  .oneliner{max-width:820px;margin:0 auto}
+
+  /* ── Cards / sections ── */
+  section{margin:46px 0;scroll-margin-top:24px}
+  .card{background:linear-gradient(180deg,var(--panel),var(--bg2));
+    border:1px solid var(--border);border-radius:var(--radius);
+    padding:30px 30px;box-shadow:var(--shadow)}
+  h2{font-size:1.7rem;font-weight:800;margin-bottom:8px;display:flex;
+    align-items:center;gap:12px}
+  h2 .num{font-family:var(--mono);font-size:1rem;color:var(--bg);
+    background:linear-gradient(135deg,var(--brand),var(--brand2));
+    width:38px;height:38px;border-radius:11px;display:grid;place-items:center;
+    font-weight:700;flex:none;box-shadow:0 8px 20px -8px var(--brand)}
+  h3{font-size:1.2rem;font-weight:700;margin:26px 0 10px;color:#fff}
+  p{color:var(--text);margin:12px 0}
+  .lead{color:var(--muted)}
+  ul,ol{margin:12px 26px 12px 0;color:var(--text)}
+  li{margin:8px 0}
+  strong{color:#fff;font-weight:700}
+  .hl{color:var(--brand2);font-weight:600}
+  code.inl{font-family:var(--mono);background:var(--code-bg);border:1px solid var(--border);
+    padding:2px 8px;border-radius:7px;font-size:.86em;color:var(--brand2);direction:ltr;
+    display:inline-block}
+
+  /* ── Code blocks ── */
+  .code{position:relative;background:var(--code-bg);border:1px solid var(--border);
+    border-radius:12px;margin:16px 0;overflow:hidden;direction:ltr;text-align:left}
+  .code .bar{display:flex;align-items:center;gap:8px;padding:10px 14px;
+    background:rgba(255,255,255,.03);border-bottom:1px solid var(--border)}
+  .code .bar .fname{font-family:var(--mono);font-size:.78rem;color:var(--dim);margin-inline-start:6px}
+  .code .bar .cp{margin-inline-start:auto;font-family:var(--mono);font-size:.72rem;
+    color:var(--muted);background:rgba(79,140,255,.12);border:1px solid var(--border);
+    padding:4px 10px;border-radius:7px;cursor:pointer;transition:.2s}
+  .code .bar .cp:hover{background:var(--brand);color:#fff}
+  .code pre{padding:16px 18px;overflow-x:auto;font-family:var(--mono);font-size:.83rem;
+    line-height:1.85;color:#dbe5ff}
+  .dot-r{width:11px;height:11px;border-radius:50%;background:#ff5f57}
+  .dot-y{width:11px;height:11px;border-radius:50%;background:#febc2e}
+  .dot-g{width:11px;height:11px;border-radius:50%;background:#28c840}
+  /* token colors */
+  .c{color:#6b7db3;font-style:italic}       /* comment */
+  .k{color:#c792ea}                         /* keyword */
+  .s{color:#a5e075}                         /* string  */
+  .f{color:#82aaff}                         /* func/flag */
+  .n{color:#f78c6c}                         /* number  */
+  .v{color:#ffcb6b}                         /* var     */
+
+  /* ── Callouts ── */
+  .note{border-radius:12px;padding:16px 18px;margin:18px 0;border:1px solid;
+    display:flex;gap:12px;align-items:flex-start}
+  .note .ic{font-size:1.2rem;line-height:1.6;flex:none}
+  .note.tip{background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.4)}
+  .note.warn{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.4)}
+  .note.info{background:rgba(79,140,255,.08);border-color:rgba(79,140,255,.4)}
+  .note.danger{background:rgba(251,113,133,.08);border-color:rgba(251,113,133,.4)}
+  .note b{color:#fff}
+
+  /* ── TOC ── */
+  .toc{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin-top:8px}
+  .toc a{display:flex;gap:10px;align-items:center;padding:13px 15px;border-radius:11px;
+    background:var(--panel2);border:1px solid var(--border);color:var(--text);transition:.2s}
+  .toc a:hover{border-color:var(--brand);transform:translateY(-2px);text-decoration:none}
+  .toc a .tn{font-family:var(--mono);color:var(--brand2);font-weight:700}
+
+  /* ── Comparison table ── */
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:.92rem}
+  th,td{padding:12px 14px;border:1px solid var(--border);text-align:right}
+  th{background:var(--panel2);color:#fff;font-weight:700}
+  td .yes{color:var(--green)} td .no{color:var(--red)}
+  tr:nth-child(even) td{background:rgba(255,255,255,.02)}
+
+  /* ── Step chips ── */
+  .steps{counter-reset:s;margin:16px 0}
+  .step{display:flex;gap:16px;padding:16px 0;border-bottom:1px dashed var(--border)}
+  .step:last-child{border-bottom:none}
+  .step .idx{counter-increment:s;flex:none;width:34px;height:34px;border-radius:10px;
+    background:linear-gradient(135deg,var(--accent),var(--brand));display:grid;place-items:center;
+    font-family:var(--mono);font-weight:700;color:#fff}
+  .step .idx::before{content:counter(s)}
+  .step h4{font-size:1.05rem;color:#fff;margin-bottom:4px}
+  .step p{margin:0;color:var(--muted);font-size:.95rem}
+
+  /* ── Diagram ── */
+  .diagram{display:flex;flex-wrap:wrap;gap:14px;justify-content:center;margin:22px 0}
+  .box{background:var(--panel2);border:1px solid var(--border);border-radius:12px;
+    padding:14px 18px;text-align:center;min-width:150px;position:relative}
+  .box .t{font-weight:700;color:#fff}
+  .box .d{font-size:.78rem;color:var(--dim);font-family:var(--mono)}
+  .arrow{display:grid;place-items:center;color:var(--brand2);font-size:1.5rem}
+
+  footer{text-align:center;padding:50px 0 70px;color:var(--dim);font-size:.9rem}
+  footer .hr{height:1px;background:var(--border);margin-bottom:26px}
+  .kbd{font-family:var(--mono);background:var(--panel2);border:1px solid var(--border);
+    border-bottom-width:3px;border-radius:7px;padding:2px 8px;font-size:.8em;direction:ltr;
+    display:inline-block;color:#fff}
+  @media(max-width:640px){.card{padding:22px 18px}.wrap{padding:0 15px}}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+
+<header class="hero">
+  <div class="wrap">
+    <span class="badge"><span class="dot"></span> راهنمای عملی · نسخه Production</span>
+    <h1 class="title">داکرایز کردن پروژه OXYGPT<br>از صفر تا نصب تک‌خطی</h1>
+    <p class="subtitle">
+      یک گزارش آموزشیِ گام‌به‌گام که نشان می‌دهد چطور یک بات تلگرام پایتونی را
+      به یک ایمیج داکر تمیز، امن و قابل‌حمل تبدیل کنیم — و در نهایت با یک دستور،
+      روی هر سروری نصبش کنیم.
+    </p>
+    <div class="oneliner code">
+      <div class="bar">
+        <span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+        <span class="fname">terminal — the dream ✨</span>
+        <span class="cp" onclick="cp(this)">کپی</span>
+      </div>
+      <pre>bash &lt;(curl -fsSL https://raw.githubusercontent.com/nauseaTT/Telegram-Robatsaz/main/deploy/install.sh)</pre>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<!-- ══════════════ TOC ══════════════ -->
+<section id="toc">
+  <div class="card">
+    <h2><span class="num">۰</span> فهرست مطالب</h2>
+    <p class="lead">اگر تازه‌کاری، از بالا شروع کن. اگر عجله داری، مستقیم برو سراغ بخش‌های ۴ و ۷.</p>
+    <div class="toc">
+      <a href="#why"><span class="tn">۱</span> چرا اصلاً داکر؟</a>
+      <a href="#anatomy"><span class="tn">۲</span> کالبدشکافی OXYGPT</a>
+      <a href="#concepts"><span class="tn">۳</span> مفاهیم حرفه‌ای داکر</a>
+      <a href="#dockerfile"><span class="tn">۴</span> نوشتن Dockerfile</a>
+      <a href="#ignore"><span class="tn">۵</span> فایل dockerignore.</a>
+      <a href="#compose"><span class="tn">۶</span> Compose و ماندگاری داده</a>
+      <a href="#install"><span class="tn">۷</span> نصب‌کننده تک‌خطی</a>
+      <a href="#run"><span class="tn">۸</span> اجرا و مدیریت روزمره</a>
+      <a href="#checklist"><span class="tn">۹</span> چک‌لیست نهایی</a>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ 1. WHY ══════════════ -->
+<section id="why">
+  <div class="card">
+    <h2><span class="num">۱</span> چرا اصلاً داکر؟</h2>
+    <p>
+      تو تا الان احتمالاً بات رو اینطوری اجرا کردی: پایتون نصب،
+      <code class="inl">pip install -r requirements.txt</code>، ساختن یک
+      <code class="inl">.env</code>، و بعد <code class="inl">python telegram.py</code>.
+      این کار روی سیستم خودت جواب می‌ده، ولی وقتی می‌ری روی یک سرور جدید،
+      همین چند خط تبدیل می‌شه به یک عصرِ پر از خطا: نسخه‌ی پایتون فرق داره،
+      یک کتابخانه‌ی سیستمی (مثلِ کتابخانه‌های <code class="inl">matplotlib</code>) نیست،
+      و در نهایت جمله‌ی معروف: «رو سیستم من که کار می‌کرد!».
+    </p>
+    <p><strong>داکر دقیقاً همین درد را حل می‌کند.</strong> ایده ساده است:</p>
+    <div class="diagram">
+      <div class="box"><div class="t">کد پروژه</div><div class="d">telegram.py …</div></div>
+      <div class="arrow">＋</div>
+      <div class="box"><div class="t">وابستگی‌ها</div><div class="d">telethon, gemini …</div></div>
+      <div class="arrow">＋</div>
+      <div class="box"><div class="t">سیستم‌عامل</div><div class="d">python:3.12-slim</div></div>
+      <div class="arrow">＝</div>
+      <div class="box" style="border-color:var(--brand)"><div class="t">Image 📦</div><div class="d">همه‌جا یکسان</div></div>
+    </div>
+    <p>
+      همه‌چیز (سیستم‌عامل کوچک + پایتون + کتابخانه‌ها + کد تو) داخل یک بسته‌ی
+      واحد به اسم <span class="hl">Image</span> بسته‌بندی می‌شه. این بسته روی لپ‌تاپ تو،
+      روی سرور آلمان، و روی سرور رفیقت — دقیقاً یک‌شکل اجرا می‌شه.
+    </p>
+    <div class="note tip"><span class="ic">✅</span><div>
+      <b>مزیت واقعی برای توسعه:</b> دیگه محیط سیستمت رو کثیف نمی‌کنی. می‌خوای پروژه رو
+      پاک کنی؟ یک <code class="inl">docker compose down</code> و تمام — هیچ ردی از پایتون و
+      کتابخانه‌ها روی سیستمت نمی‌مونه.
+    </div></div>
+    <h3>Image در برابر Container</h3>
+    <p>این دو تا رو خیلی‌ها قاطی می‌کنن، ولی تفاوتشون ساده است:</p>
+    <ul>
+      <li><span class="hl">Image</span> = نقشه/قالب ثابت (مثل فایل نصب یک برنامه). فقط خونده می‌شه.</li>
+      <li><span class="hl">Container</span> = یک نمونه‌ی <em>در حال اجرا</em> از آن Image (مثل برنامه‌ای که بازش کردی). زنده و پویاست.</li>
+    </ul>
+    <p>از یک Image می‌تونی چند Container بسازی؛ درست مثل اینکه از یک فایل نصب، برنامه رو روی چند کامپیوتر نصب کنی.</p>
+  </div>
+</section>
+
+<!-- ══════════════ 2. ANATOMY ══════════════ -->
+<section id="anatomy">
+  <div class="card">
+    <h2><span class="num">۲</span> کالبدشکافی OXYGPT</h2>
+    <p class="lead">قبل از داکرایز کردن هر پروژه‌ای، باید بدونی با چه چیزی طرفی. بیایم ساختار OXYGPT رو بشکافیم:</p>
+    <ul>
+      <li><strong>نقطه‌ی ورود:</strong> <code class="inl">telegram.py</code> — یک پراسسِ تک، بر پایه‌ی <code class="inl">asyncio</code> که تا ابد اجرا می‌مونه.</li>
+      <li><strong>موتور:</strong> کتابخانه‌ی <code class="inl">Telethon</code> برای تلگرام + ارائه‌دهنده‌های هوش مصنوعی (Gemini / OpenAI).</li>
+      <li><strong>وابستگی‌های سنگین:</strong> <code class="inl">pandas</code>، <code class="inl">matplotlib</code>، <code class="inl">mplfinance</code>، <code class="inl">Pillow</code> — این‌ها برای کامپایل به کتابخانه‌های سیستمی نیاز دارند (نکته‌ی مهم برای Dockerfile).</li>
+      <li><strong>تنظیمات:</strong> کاملاً از طریق متغیرهای محیطی (<code class="inl">.env</code>) خونده می‌شه — که برای داکر <em>عالیه</em>.</li>
+    </ul>
+    <h3>داده‌هایی که باید «زنده» بمانند (State)</h3>
+    <p>
+      این مهم‌ترین بخشِ داکرایز کردنِ یک بات است. اگر این فایل‌ها رو داخل Image نگه داری،
+      با هر بار ری‌بیلد <b>همه‌چیز پاک می‌شه</b> (لاگین تلگرام می‌پره، دیتابیس صفر می‌شه!).
+      پس باید بیرون از Container ذخیره‌شون کنیم:
+    </p>
+    <table>
+      <thead><tr><th>فایل</th><th>چیست؟</th><th>اگر پاک شود…</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inl">bot.session</code></td><td>نشست لاگین تلگرام</td><td>بات دوباره باید لاگین کند</td></tr>
+        <tr><td><code class="inl">bot_database.db</code></td><td>دیتابیس اصلی کاربران/تنظیمات</td><td>تمام کاربران و آمار می‌پرد</td></tr>
+        <tr><td><code class="inl">trade_journal/journal.db</code></td><td>ژورنال معاملات</td><td>سوابق کاربر نابود می‌شود</td></tr>
+        <tr><td><code class="inl">channel_watcher.db</code></td><td>دیتابیس رصد کانال</td><td>تنظیمات رصد می‌پرد</td></tr>
+        <tr><td><code class="inl">logs/</code></td><td>فایل‌های لاگ</td><td>تاریخچه‌ی خطاها گم می‌شود</td></tr>
+      </tbody>
+    </table>
+    <div class="note info"><span class="ic">🎯</span><div>
+      <b>قانون طلایی:</b> کدِ برنامه داخل Image؛ اما <b>داده (State)</b> همیشه بیرون، روی
+      <span class="hl">Volume</span>. این جدا کردن، قلبِ داکرایزِ درست است.
+    </div></div>
+  </div>
+</section>
+
+<!-- ══════════════ 3. CONCEPTS ══════════════ -->
+<section id="concepts">
+  <div class="card">
+    <h2><span class="num">۳</span> مفاهیم حرفه‌ای که فرق را می‌سازند</h2>
+    <p class="lead">تو گفتی با مباحث «جدیدتر و حرفه‌ای‌تر» می‌خوای آشنا شی. این چهار مفهوم، جدا کننده‌ی یک Dockerfile آماتور از یک نسخه‌ی Production است.</p>
+
+    <h3>۱) لایه‌ها و کشِ ساخت (Layer Cache)</h3>
+    <p>
+      هر دستور در Dockerfile یک <span class="hl">لایه (Layer)</span> می‌سازد. داکر لایه‌ها را کش می‌کند و
+      اگر ورودی یک لایه تغییر نکرده باشد، دوباره اجرایش نمی‌کند. ترفند حرفه‌ای:
+      اول <code class="inl">requirements.txt</code> را کپی و نصب کن، <em>بعد</em> بقیه‌ی کد را.
+      این‌طوری تا وقتی وابستگی‌ها عوض نشدن، با هر تغییر کوچک در کد، نصب مجدد کتابخانه‌ها اتفاق نمی‌افته
+      و ری‌بیلد در چند ثانیه تمام می‌شود.
+    </p>
+
+    <h3>۲) ساختِ چندمرحله‌ای (Multi-stage Build) 🌟</h3>
+    <p>
+      این ستاره‌ی کار ماست. کتابخانه‌هایی مثل <code class="inl">pandas</code> برای نصب به کامپایلر و
+      هدرهای سیستمی (<code class="inl">gcc</code>, <code class="inl">build-essential</code>) نیاز دارند —
+      حجیم و پرخطر. با Multi-stage، در یک مرحله (<span class="hl">builder</span>) این ابزارها را داریم و
+      کتابخانه‌ها را داخل یک <em>virtualenv</em> می‌سازیم؛ سپس در مرحله‌ی نهایی (<span class="hl">runtime</span>)
+      <b>فقط همان virtualenv</b> را کپی می‌کنیم — بدون کامپایلر، بدون کش pip.
+    </p>
+    <div class="diagram">
+      <div class="box" style="border-color:var(--amber)"><div class="t">Stage: builder</div><div class="d">gcc + build headers<br>~900MB</div></div>
+      <div class="arrow">←venv فقط</div>
+      <div class="box" style="border-color:var(--green)"><div class="t">Stage: runtime</div><div class="d">slim + venv<br>سبک‌تر و امن‌تر</div></div>
+    </div>
+    <p>نتیجه: ایمیج کوچک‌تر، سطح حمله‌ی امنیتی کمتر، و دانلود سریع‌تر روی سرور.</p>
+
+    <h3>۳) کاربر غیرِ root</h3>
+    <p>
+      به‌صورت پیش‌فرض همه‌چیز داخل کانتینر با کاربر <code class="inl">root</code> اجرا می‌شه.
+      اگر یک آسیب‌پذیری پیدا بشه، مهاجم root می‌شه. راهکار حرفه‌ای: یک کاربر معمولی
+      (<code class="inl">appuser</code>) بساز و برنامه را با آن اجرا کن.
+    </p>
+
+    <h3>۴) init درست + سیگنال‌ها (tini)</h3>
+    <p>
+      برنامه‌ی ما یک حلقه‌ی <code class="inl">asyncio</code> است. اگر پراسسِ پایتون مستقیماً PID 1 باشد،
+      سیگنال‌های خاموش‌سازی (<code class="inl">SIGTERM</code> هنگام <code class="inl">docker stop</code>) درست
+      مدیریت نمی‌شوند و ممکن است تسک‌ها یتیم بمانند. یک init سبک به اسم
+      <code class="inl">tini</code> این را حل می‌کند و خاموش‌سازیِ تمیز می‌دهد.
+    </p>
+
+    <div class="note info"><span class="ic">🧩</span><div>
+      <b>و در نهایت Volume:</b> پوشه‌ای روی <em>هاست</em> که به داخل کانتینر «وصل» می‌شود. هر چیزی
+      آنجا نوشته شود، بیرون از کانتینر باقی می‌ماند — دقیقاً همان جایی که State بات را نگه می‌داریم.
+    </div></div>
+  </div>
+</section>
+
+<!-- ══════════════ 4. DOCKERFILE ══════════════ -->
+<section id="dockerfile">
+  <div class="card">
+    <h2><span class="num">۴</span> نوشتن Dockerfile — خط به خط</h2>
+    <p class="lead">این همان Dockerfileی است که برای OXYGPT ساختیم. هر بخش را با توضیح فارسی می‌آوریم.</p>
+
+    <h3>مرحله‌ی ۱: builder (ساخت وابستگی‌ها)</h3>
+    <div class="code">
+      <div class="bar"><span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+        <span class="fname">Dockerfile</span><span class="cp" onclick="cp(this)">کپی</span></div>
+<pre><span class="c"># از یک پایتونِ سبک به‌عنوان پایه‌ی مرحله‌ی builder استفاده می‌کنیم</span>
+<span class="k">FROM</span> python:3.12-slim <span class="k">AS</span> builder
+
+<span class="c"># رفتار pip/python را در زمان build سریع و بی‌سروصدا می‌کنیم</span>
+<span class="k">ENV</span> PYTHONDONTWRITEBYTECODE=<span class="n">1</span> PYTHONUNBUFFERED=<span class="n">1</span> PIP_NO_CACHE_DIR=<span class="n">1</span>
+
+<span class="c"># ابزار کامپایل که فقط اینجا لازم است (به ایمیج نهایی نمی‌رسد)</span>
+<span class="k">RUN</span> apt-get update && apt-get install -y --no-install-recommends \
+        build-essential gcc libjpeg-dev zlib1g-dev libfreetype6-dev pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+<span class="c"># یک virtualenv مستقل می‌سازیم تا بعداً کامل کپی‌اش کنیم</span>
+<span class="k">RUN</span> python -m venv /opt/venv
+<span class="k">ENV</span> PATH=<span class="s">"/opt/venv/bin:$PATH"</span>
+
+<span class="k">WORKDIR</span> /app
+<span class="c"># فقط requirements را اول کپی می‌کنیم → کشِ لایه (rebuild سریع)</span>
+<span class="k">COPY</span> requirements.txt .
+<span class="k">RUN</span> pip install --upgrade pip && pip install -r requirements.txt</pre>
+    </div>
+
+    <h3>مرحله‌ی ۲: runtime (ایمیج نهاییِ سبک)</h3>
+    <div class="code">
+      <div class="bar"><span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+        <span class="fname">Dockerfile (ادامه)</span><span class="cp" onclick="cp(this)">کپی</span></div>
+<pre><span class="k">FROM</span> python:3.12-slim <span class="k">AS</span> runtime
+<span class="k">ENV</span> PATH=<span class="s">"/opt/venv/bin:$PATH"</span> PYTHONUNBUFFERED=<span class="n">1</span> TZ=UTC
+
+<span class="c"># فقط کتابخانه‌های سیستمیِ زمان اجرا (بدون کامپایلر)</span>
+<span class="k">RUN</span> apt-get update && apt-get install -y --no-install-recommends \
+        libjpeg62-turbo libfreetype6 libpng16-16 tini curl \
+    && rm -rf /var/lib/apt/lists/*
+
+<span class="c"># venvِ آماده را از مرحله‌ی builder کپی می‌کنیم — دیگر pip install نداریم</span>
+<span class="k">COPY</span> --from=builder /opt/venv /opt/venv
+
+<span class="k">WORKDIR</span> /app
+<span class="c"># کاربر غیرِ root برای امنیت</span>
+<span class="k">RUN</span> useradd --create-home --uid <span class="n">10001</span> appuser
+<span class="k">COPY</span> --chown=appuser:appuser . .
+<span class="k">RUN</span> mkdir -p /app/logs /app/data && chown -R appuser:appuser /app/logs /app/data
+<span class="k">USER</span> appuser
+
+<span class="c"># هلث‌چک: چون پورت HTTP نداریم، فقط سالم بودن importها را می‌سنجیم</span>
+<span class="k">HEALTHCHECK</span> --interval=30s --timeout=10s --retries=3 \
+    CMD python -c <span class="s">"import telethon, google.generativeai"</span> || exit 1
+
+<span class="c"># tini = init سبک برای سیگنال‌ها؛ entrypoint داده‌ها را symlink می‌کند</span>
+<span class="k">ENTRYPOINT</span> [<span class="s">"tini"</span>, <span class="s">"--"</span>, <span class="s">"/app/deploy/entrypoint.sh"</span>]
+<span class="k">CMD</span> [<span class="s">"python"</span>, <span class="s">"telegram.py"</span>]</pre>
+    </div>
+    <div class="note tip"><span class="ic">💡</span><div>
+      دقت کن که <b>هیچ رمز و کلیدی</b> داخل Dockerfile نیست. تمام secretها در زمان اجرا از
+      <code class="inl">.env</code> تزریق می‌شوند — هرگز داخل ایمیج «پخته» نمی‌شوند.
+    </div></div>
+  </div>
+</section>
+
+<!-- ══════════════ 5. DOCKERIGNORE ══════════════ -->
+<section id="ignore">
+  <div class="card">
+    <h2><span class="num">۵</span> فایل <code class="inl">.dockerignore</code></h2>
+    <p class="lead">
+      این فایل شبیه <code class="inl">.gitignore</code> است ولی برای داکر. هر چیزی که اینجا فهرست کنی،
+      اصلاً به «کانتکستِ ساخت» فرستاده نمی‌شود. سه فایده دارد:
+    </p>
+    <ul>
+      <li><b>سرعت:</b> فایل‌های حجیم و بی‌ربط ارسال نمی‌شوند → build سریع‌تر.</li>
+      <li><b>امنیت:</b> جلوی نشتِ <code class="inl">.env</code> و <code class="inl">*.session</code> به داخل ایمیج را می‌گیرد.</li>
+      <li><b>تمیزی:</b> کش، لاگ و دیتابیس‌های محلی وارد ایمیج نمی‌شوند.</li>
+    </ul>
+    <div class="code">
+      <div class="bar"><span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+        <span class="fname">.dockerignore</span><span class="cp" onclick="cp(this)">کپی</span></div>
+<pre><span class="c"># کنترل نسخه</span>
+.git
+.github
+<span class="c"># کش‌های پایتون</span>
+__pycache__/
+*.py[cod]
+<span class="c"># ⚠️ رازها و نشست‌ها — هرگز داخل ایمیج نروند</span>
+.env
+*.session
+*.session-journal
+<span class="c"># دیتابیس‌ها (روی Volume نگه داشته می‌شوند)</span>
+*.db
+*.db-shm
+*.db-wal
+<span class="c"># داده‌های تولیدشده در زمان اجرا</span>
+logs/
+*.log
+*.png
+market_data_cache.json
+<span class="c"># خودِ فایل‌های داکر و مستندات لازم نیستند</span>
+Dockerfile
+docker-compose.yml
+*.md
+deploy/*
+<span class="c"># …اما entrypoint باید داخل ایمیج باشد</span>
+!deploy/entrypoint.sh</pre>
+    </div>
+    <div class="note danger"><span class="ic">🔐</span><div>
+      <b>مهم‌ترین خطِ امنیتی:</b> اگر <code class="inl">.env</code> و <code class="inl">*.session</code> را
+      ignore نکنی و ایمیج را جایی پابلیک کنی، عملاً توکن بات و لاگین تلگرامت لو می‌رود. این خط شوخی ندارد.
+    </div></div>
+  </div>
+</section>
+
+<!-- ══════════════ 6. COMPOSE ══════════════ -->
+<section id="compose">
+  <div class="card">
+    <h2><span class="num">۶</span> Docker Compose و راز ماندگاری داده</h2>
+    <p class="lead">
+      می‌شد بات را با یک دستور طولانیِ <code class="inl">docker run …</code> اجرا کرد،
+      ولی حرفه‌ای‌ها از <span class="hl">Compose</span> استفاده می‌کنند: کل پیکربندی در یک فایل خوانا،
+      و اجرا فقط با <code class="inl">docker compose up -d</code>.
+    </p>
+    <div class="code">
+      <div class="bar"><span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+        <span class="fname">docker-compose.yml</span><span class="cp" onclick="cp(this)">کپی</span></div>
+<pre><span class="v">services</span>:
+  <span class="v">oxygpt</span>:
+    <span class="v">build</span>: .              <span class="c"># از Dockerfile همین پوشه بساز</span>
+    <span class="v">image</span>: oxygpt:latest
+    <span class="v">container_name</span>: oxygpt
+    <span class="v">restart</span>: unless-stopped <span class="c"># اگر کرش کرد یا سرور ری‌استارت شد، خودکار بالا بیاد</span>
+
+    <span class="v">env_file</span>:
+      - .env               <span class="c"># همه‌ی secretها از اینجا</span>
+
+    <span class="v">volumes</span>:
+      - ./data:/app/data   <span class="c"># ★ کل State اینجا زندگی می‌کند و پایدار است</span>
+
+    <span class="v">deploy</span>:                <span class="c"># سقف مصرف رم تا یک تسکِ خراب سرور را نخورد</span>
+      <span class="v">resources</span>: {<span class="v">limits</span>: {<span class="v">memory</span>: 1g}}
+
+    <span class="v">logging</span>:               <span class="c"># چرخش لاگ تا دیسک پر نشود</span>
+      <span class="v">driver</span>: json-file
+      <span class="v">options</span>: {<span class="v">max-size</span>: <span class="s">"10m"</span>, <span class="v">max-file</span>: <span class="s">"3"</span>}</pre>
+    </div>
+
+    <h3>مشکل ظریفِ ماندگاری در این پروژه</h3>
+    <p>
+      اینجا یک نکته‌ی حرفه‌ای هست که خیلی‌ها گیرش می‌افتند: OXYGPT فایل‌های State را در
+      <b>مسیرهای پراکنده</b> می‌سازد (<code class="inl">bot_database.db</code> در ریشه،
+      <code class="inl">trade_journal/journal.db</code> در زیرپوشه، و…). mount کردنِ تک‌تکِ این فایل‌ها
+      شکننده است. راه‌حلِ تمیز: <b>یک</b> پوشه‌ی <code class="inl">/app/data</code> را mount می‌کنیم و یک
+      اسکریپت entrypoint، هر فایل State را با <span class="hl">symlink</span> به داخل همان پوشه هدایت می‌کند —
+      بدون اینکه حتی یک خط از کد پایتون تغییر کند.
+    </p>
+    <div class="code">
+      <div class="bar"><span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+        <span class="fname">deploy/entrypoint.sh</span><span class="cp" onclick="cp(this)">کپی</span></div>
+<pre><span class="c">#!/usr/bin/env sh</span>
+<span class="k">set</span> -e
+DATA_DIR=<span class="s">"/app/data"</span>
+<span class="f">mkdir</span> -p <span class="s">"$DATA_DIR"</span> <span class="s">"$DATA_DIR/logs"</span>
+
+<span class="c"># هر فایل State را به داخل پوشه‌ی پایدار symlink می‌کند</span>
+<span class="k">link</span>() {
+  real=<span class="s">"$1"</span>; target=<span class="s">"$DATA_DIR/$2"</span>
+  <span class="f">mkdir</span> -p <span class="s">"$(dirname "$real")"</span>
+  <span class="c"># اگر ایمیج یک فایل واقعی داشت و volume خالی بود، یک‌بار منتقلش کن</span>
+  [ -e <span class="s">"$real"</span> ] &amp;&amp; [ ! -L <span class="s">"$real"</span> ] &amp;&amp; [ ! -e <span class="s">"$target"</span> ] &amp;&amp; <span class="f">mv</span> <span class="s">"$real"</span> <span class="s">"$target"</span>
+  [ -e <span class="s">"$target"</span> ] || : &gt; <span class="s">"$target"</span>
+  <span class="f">rm</span> -f <span class="s">"$real"</span>; <span class="f">ln</span> -s <span class="s">"$target"</span> <span class="s">"$real"</span>
+}
+
+<span class="k">link</span> /app/bot.session                     bot.session
+<span class="k">link</span> /app/bot_database.db                 bot_database.db
+<span class="k">link</span> /app/channel_watcher_user.session    channel_watcher_user.session
+<span class="k">link</span> /app/channel_watcher/channel_watcher.db channel_watcher.db
+<span class="k">link</span> /app/trade_journal/journal.db        journal.db
+<span class="f">rm</span> -rf /app/logs; <span class="f">ln</span> -s <span class="s">"$DATA_DIR/logs"</span> /app/logs
+
+<span class="k">exec</span> <span class="s">"$@"</span>   <span class="c"># تحویل به دستور اصلی (python telegram.py)</span></pre>
+    </div>
+    <div class="note tip"><span class="ic">🧠</span><div>
+      <b>چرا symlink؟</b> چون بدون دست‌زدن به سورس پایتون، تمام نوشتن‌ها به فایل‌های State
+      عملاً روی <code class="inl">./data</code>ی هاست می‌افتد. پروژه را حذف کن، دوباره بساز — لاگین و
+      دیتابیس‌ها سرِ جایشان‌اند. این همان چیزی است که «داکرایزِ درست» را از «فقط کار می‌کند» جدا می‌کند.
+    </div></div>
+  </div>
+</section>
+
+<!-- ══════════════ 7. INSTALL.SH ══════════════ -->
+<section id="install">
+  <div class="card">
+    <h2><span class="num">۷</span> نصب‌کننده‌ی تک‌خطی (بخش سرگرمی 🎉)</h2>
+    <p class="lead">
+      حالا می‌رسیم به همان چیزی که عاشقش شدی: تجربه‌ی نصبِ تک‌خطی. این دقیقاً همان الگویی است که
+      پروژه‌ی خودت دارد. کاربر فقط این را می‌زند و بقیه‌اش جادوست:
+    </p>
+    <div class="code">
+      <div class="bar"><span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+        <span class="fname">terminal</span><span class="cp" onclick="cp(this)">کپی</span></div>
+<pre>bash &lt;(curl -fsSL https://raw.githubusercontent.com/nauseaTT/Telegram-Robatsaz/main/deploy/install.sh)</pre>
+    </div>
+    <h3>این یک خط دقیقاً چه کار می‌کند؟</h3>
+    <ul>
+      <li><code class="inl">curl -fsSL &lt;url&gt;</code> محتوای اسکریپت را از گیت‌هاب دانلود می‌کند.</li>
+      <li><code class="inl">&lt;( … )</code> که به آن <em>Process Substitution</em> می‌گویند، خروجی curl را مثل یک فایل موقت به bash می‌دهد.</li>
+      <li>پس <code class="inl">bash</code> آن اسکریپت را بی‌آنکه چیزی روی دیسک بماند، اجرا می‌کند.</li>
+    </ul>
+    <div class="note warn"><span class="ic">⚠️</span><div>
+      <b>هشدار امنیتی که همیشه باید بدانی:</b> اجرای <code class="inl">curl | bash</code> یعنی به آن ریپازیتوری
+      اعتماد کامل داری، چون هر کدی داخل اسکریپت باشد روی سیستمت اجرا می‌شود. برای پروژه‌ی خودت عالیه؛
+      برای منابع ناشناس، اول اسکریپت را بخوان.
+    </div></div>
+
+    <h3>اسکریپت ما این مراحل را طی می‌کند</h3>
+    <div class="steps">
+      <div class="step"><div class="idx"></div><div><h4>بررسی پیش‌نیازها</h4><p>وجود Docker و Docker Compose را چک می‌کند و در صورت نبود، روی لینوکس پیشنهاد نصب می‌دهد.</p></div></div>
+      <div class="step"><div class="idx"></div><div><h4>گرفتن سورس</h4><p>ریپو را در <code class="inl">~/oxygpt</code> کلون می‌کند؛ اگر از قبل بود، فقط آپدیتش می‌کند (idempotent).</p></div></div>
+      <div class="step"><div class="idx"></div><div><h4>پرسیدن کلیدها</h4><p>به‌صورت تعاملی <code class="inl">API_ID</code>، <code class="inl">API_HASH</code>، توکن بات و کلید Gemini را می‌پرسد و در <code class="inl">.env</code> می‌نویسد.</p></div></div>
+      <div class="step"><div class="idx"></div><div><h4>ساخت و اجرا</h4><p><code class="inl">docker compose build</code> و سپس <code class="inl">up -d</code> — بات در پس‌زمینه بالا می‌آید.</p></div></div>
+      <div class="step"><div class="idx"></div><div><h4>راهنمای پایانی</h4><p>دستورهای مدیریتی (لاگ، ری‌استارت، توقف) را با رنگ و لعاب چاپ می‌کند.</p></div></div>
+    </div>
+
+    <h3>تکه‌ی کلیدیِ اسکریپت</h3>
+    <div class="code">
+      <div class="bar"><span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+        <span class="fname">deploy/install.sh</span><span class="cp" onclick="cp(this)">کپی</span></div>
+<pre><span class="c">#!/usr/bin/env bash</span>
+<span class="k">set</span> -euo pipefail    <span class="c"># در اولین خطا متوقف شو (اسکریپتِ ایمن)</span>
+
+REPO_URL=<span class="s">"https://github.com/nauseaTT/Telegram-Robatsaz.git"</span>
+INSTALL_DIR=<span class="s">"${OXYGPT_DIR:-$HOME/oxygpt}"</span>
+
+<span class="c"># ۱) داکر هست؟ اگر نه، روی لینوکس پیشنهاد نصب بده</span>
+<span class="k">command</span> -v docker &gt;/dev/null || <span class="f">curl</span> -fsSL https://get.docker.com | sh
+
+<span class="c"># ۲) کلون یا آپدیت</span>
+<span class="k">if</span> [ -d <span class="s">"$INSTALL_DIR/.git"</span> ]; <span class="k">then</span>
+  <span class="f">git</span> -C <span class="s">"$INSTALL_DIR"</span> pull --ff-only
+<span class="k">else</span>
+  <span class="f">git</span> clone --depth 1 <span class="s">"$REPO_URL"</span> <span class="s">"$INSTALL_DIR"</span>
+<span class="k">fi</span>
+<span class="k">cd</span> <span class="s">"$INSTALL_DIR"</span>
+
+<span class="c"># ۳) اگر .env نبود، کلیدها را بپرس (تابع ask در اسکریپت کامل)</span>
+[ -f .env ] || { <span class="f">cp</span> .env.example .env; ask TELEGRAM_BOT_TOKEN <span class="s">"Bot Token"</span> 1; }
+
+<span class="c"># ۴) بساز و اجرا کن</span>
+<span class="f">mkdir</span> -p data data/logs
+docker compose up -d --build
+
+<span class="f">echo</span> <span class="s">"✔ OXYGPT بالا آمد! لاگ‌ها: docker compose logs -f"</span></pre>
+    </div>
+    <div class="note tip"><span class="ic">✨</span><div>
+      نسخه‌ی کاملِ این اسکریپت (با بنر ASCII، رنگ‌ها، و پرسش‌های تعاملیِ همه‌ی کلیدها) داخل فایل
+      <code class="inl">deploy/install.sh</code> پروژه قرار دارد و آماده‌ی استفاده است.
+    </div></div>
+  </div>
+</section>
+
+<!-- ══════════════ 8. RUN / MANAGE ══════════════ -->
+<section id="run">
+  <div class="card">
+    <h2><span class="num">۸</span> اجرا و مدیریت روزمره</h2>
+    <p class="lead">اگر نمی‌خواهی از نصب‌کننده استفاده کنی، دستی هم ساده است. داخل پوشه‌ی پروژه:</p>
+    <div class="code">
+      <div class="bar"><span class="dot-r"></span><span class="dot-y"></span><span class="dot-g"></span>
+        <span class="fname">دستورهای پرکاربرد</span><span class="cp" onclick="cp(this)">کپی</span></div>
+<pre><span class="c"># ۱) کلیدها را در .env بگذار</span>
+cp .env.example .env &amp;&amp; nano .env
+
+<span class="c"># ۲) بساز و در پس‌زمینه بالا بیاور</span>
+docker compose up -d --build
+
+<span class="c"># دیدن لاگ زنده</span>
+docker compose logs -f
+
+<span class="c"># وضعیت کانتینر</span>
+docker compose ps
+
+<span class="c"># ری‌استارت بعد از تغییر کد</span>
+docker compose up -d --build
+
+<span class="c"># توقف و حذف کانتینر (داده‌ها در ./data می‌مانند)</span>
+docker compose down</pre>
+    </div>
+    <table>
+      <thead><tr><th>می‌خواهی…</th><th>دستور</th></tr></thead>
+      <tbody>
+        <tr><td>بات را روشن کنی</td><td><code class="inl">docker compose up -d</code></td></tr>
+        <tr><td>لاگ‌ها را ببینی</td><td><code class="inl">docker compose logs -f</code></td></tr>
+        <tr><td>بعد از تغییر کد آپدیت کنی</td><td><code class="inl">docker compose up -d --build</code></td></tr>
+        <tr><td>بات را خاموش کنی</td><td><code class="inl">docker compose down</code></td></tr>
+        <tr><td>از دیتابیس بکاپ بگیری</td><td><code class="inl">tar czf backup.tgz data/</code></td></tr>
+      </tbody>
+    </table>
+    <div class="note info"><span class="ic">💾</span><div>
+      <b>بکاپ‌گیری راحت شد:</b> چون کل State در <code class="inl">./data</code> است، فقط از همین یک پوشه بکاپ بگیر
+      و روی سرور جدید بازش کن — بات با همان لاگین و دیتابیس‌ها بالا می‌آید.
+    </div></div>
+  </div>
+</section>
+
+<!-- ══════════════ 9. CHECKLIST ══════════════ -->
+<section id="checklist">
+  <div class="card">
+    <h2><span class="num">۹</span> چک‌لیست نهاییِ داکرایز حرفه‌ای</h2>
+    <p class="lead">قبل از اینکه بگویی «تمام شد»، این‌ها را تیک بزن:</p>
+    <table>
+      <thead><tr><th>مورد</th><th>وضعیت در پروژه‌ی ما</th></tr></thead>
+      <tbody>
+        <tr><td>ساخت چندمرحله‌ای (سبک‌سازی ایمیج)</td><td class="yes">✔ انجام شد</td></tr>
+        <tr><td>کش لایه با کپی زودهنگام requirements</td><td class="yes">✔ انجام شد</td></tr>
+        <tr><td>اجرا با کاربر غیرِ root</td><td class="yes">✔ appuser</td></tr>
+        <tr><td>init درست برای سیگنال‌ها (tini)</td><td class="yes">✔ انجام شد</td></tr>
+        <tr><td>secretها بیرون از ایمیج (env_file)</td><td class="yes">✔ انجام شد</td></tr>
+        <tr><td>ماندگاری داده روی Volume</td><td class="yes">✔ ./data + symlink</td></tr>
+        <tr><td>.dockerignore برای امنیت و سرعت</td><td class="yes">✔ انجام شد</td></tr>
+        <tr><td>restart خودکار + سقف رم + چرخش لاگ</td><td class="yes">✔ انجام شد</td></tr>
+        <tr><td>هلث‌چک</td><td class="yes">✔ انجام شد</td></tr>
+        <tr><td>نصب تک‌خطی</td><td class="yes">✔ deploy/install.sh</td></tr>
+      </tbody>
+    </table>
+    <div class="note tip"><span class="ic">🚀</span><div>
+      <b>قدم‌های بعدیِ حرفه‌ای‌تر (اختیاری):</b> پوش کردن ایمیج به یک Registry (مثل GitHub Container Registry)،
+      اسکنِ امنیتی با <code class="inl">docker scout</code>، و ساخت خودکار با GitHub Actions در هر push.
+    </div></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="hr"></div>
+    <p>ساخته‌شده برای پروژه‌ی <b>OXYGPT</b> · راهنمای داکرایز کردن حرفه‌ای</p>
+    <p style="margin-top:8px">
+      فایل‌های آماده در ریشه‌ی پروژه:
+      <span class="kbd">Dockerfile</span>
+      <span class="kbd">docker-compose.yml</span>
+      <span class="kbd">.dockerignore</span>
+      <span class="kbd">deploy/install.sh</span>
+      <span class="kbd">deploy/entrypoint.sh</span>
+    </p>
+  </div>
+</footer>
+</div><!-- /wrap -->
+
+<script>
+  // progress bar
+  const bar=document.getElementById('progress');
+  addEventListener('scroll',()=>{
+    const h=document.documentElement;
+    const p=(h.scrollTop)/(h.scrollHeight-h.clientHeight)*100;
+    bar.style.width=p+'%';
+  });
+  // copy buttons
+  function cp(el){
+    const pre=el.closest('.code').querySelector('pre');
+    const txt=pre.innerText;
+    navigator.clipboard.writeText(txt).then(()=>{
+      const old=el.textContent; el.textContent='✓ کپی شد';
+      el.style.background='var(--green)'; el.style.color='#08110a';
+      setTimeout(()=>{el.textContent=old;el.style.background='';el.style.color='';},1400);
+    });
+  }
+</script>
+</body>
+</html>
