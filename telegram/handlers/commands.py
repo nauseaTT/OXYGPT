@@ -140,7 +140,7 @@ async def cancel_command(self: "TelegramBot", event: object) -> None:
       2. DB: delete_pending_state removes any pending_action/ pending_question
          from the database, so the next text message won't be misrouted.
       3. Memory: processing_users discard ensures the user is no longer
-         marked as "in a request" (relevant if the user was waiting for AI).
+         marked as "in a request" (relevant if the user was waiting for a reply).
       4. UI: delete known pending_message entries to clean up stale bot
          messages.  Only the most common keys are covered here; service
          creation keys (service_create, service_set_url, etc.) are cleaned
