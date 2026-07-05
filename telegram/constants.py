@@ -339,6 +339,51 @@ VERIFY_MAX_WORDS_PREVIEW: int = 15  # Number of words to show from last user mes
 
 TIPS_GENERAL: List[str] = TIPS_QUICKASK
 
+# ============================================================
+# HELP TEXT  (single source of truth for /help and the help menu)
+# ============================================================
+# Note: keep this copy free of any product-category acronyms; describe the bot
+# by what it does. Use `HELP_TEXT.format(tip=...)` to render.
+
+HELP_TEXT: str = """\
+ℹ️ <b>راهنمای OxyGPT</b>
+
+دستیار هوشمند تحلیل بازار و یادگیری — با جست‌وجوی زنده وب، منتورهای معاملاتی و ژورنال حرفه‌ای معاملات.
+برای شروع کافیه یکی از دستورهای زیر رو بفرستی، یا از منوی اصلی دکمه‌ها رو انتخاب کنی.
+
+━━━━━━━━━━━━━━━━━━
+
+<b>💬 گفت‌وگو و یادگیری</b>
+گفت‌وگوی آزاد، آموزش گام‌به‌گام، کمک برنامه‌نویسی و تحلیل عمیق.
+<code>/ask</code> پرسش عمومی  ·  <code>/learn</code> آموزش
+<code>/code</code> برنامه‌نویسی  ·  <code>/deep</code> تحلیل عمیق
+<i>می‌تونی تصویر هم بفرستی و درباره‌اش گفت‌وگو کنی.</i>
+
+<b>🎓 منتورهای تخصصی بازار</b>
+چهار سبک تحلیلی مستقل، هرکدام با چارچوب خودش:
+<code>/micheal</code> — سبک ICT
+<code>/daye</code> — Quarterly Theory
+<code>/zeussy</code> — Time &amp; Price
+<code>/albrooks</code> — Price Action
+
+<b>🗂 پنجره‌های مکالمه</b>
+تا ۵ گفت‌وگوی موازی با حافظهٔ مستقل، برای پیگیری هم‌زمان چند موضوع.
+<code>/new نام</code> پنجرهٔ جدید  ·  <code>/w</code> فهرست پنجره‌ها
+<code>/sw</code> جابه‌جایی  ·  <code>/clear</code> پاک‌سازی حافظه
+
+<b>📊 ژورنال معاملات</b>
+ثبت، تحلیل و آمار معاملات از دکمهٔ <b>📊 ژورنال معاملات</b> در منوی اصلی.
+
+<b>📡 پایش کانال</b>
+رصد هوشمند کانال‌ها و دسته‌بندی خودکار پیام‌ها از دکمهٔ <b>📡 پایش کانال</b>.
+
+━━━━━━━━━━━━━━━━━━
+
+<b>⚙️ مدیریت حساب</b>
+<code>/status</code> وضعیت مصرف و اشتراک  ·  <code>/cancel</code> لغو عملیات جاری
+
+💡 <i>{tip}</i>"""
+
 PROCESSING_PHASES: List[str] = [
     "تحلیل پیام",
     "آنالیز تصویر",

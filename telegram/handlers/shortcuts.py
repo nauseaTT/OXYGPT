@@ -7,7 +7,7 @@ from skills import SKILLS, get_skill
 if TYPE_CHECKING:
     from ..bot import TelegramBot
 
-from ..constants import TIPS_GENERAL
+from ..constants import TIPS_GENERAL, HELP_TEXT
 from .verify import should_verify, send_verify_quick_ask, send_verify_mentor
 
 
@@ -416,35 +416,7 @@ async def help_cmd(self: "TelegramBot", event: Any) -> None:
 
     random_tip = random.choice(TIPS_GENERAL)
 
-    text = f"""
-ℹ️ <b>راهنمای کامل OxyGPT</b>
-
-🤖 دستیار هوشمند با AI، جستجوی وب، منتورهای معاملاتی و ژورنال
-
-
-<b>💬 میخوام سوال بپرسم یا چیزی یاد بگیرم</b>
-<code>/ask</code> · <code>/learn</code> · <code>/code</code> · <code>/deep</code>
-میتونی عکس بفرستی یا باهاش بحث کنی، مثل یه هم‌فکر حرفه‌ای
-
-<b>🎓 میخوام تحلیل تخصصی بازار داشته باشم</b>
-۴ منتور با سبک‌های متفاوت:
-<code>/micheal</code> — ICT · <code>/daye</code> — Quarterly Theory
-<code>/zeussy</code> — Time-Price · <code>/albrooks</code> — Price Action
-
-<b>🗂 چندتا تحلیل رو همزمان پیش میبرم</b>
-تا ۵ پنجره مجزا با حافظه مستقل:
-<code>/new نام</code> · <code>/w</code> · <code>/sw</code> · <code>/clear</code>
-
-<b>📊 معاملاتمو ثبت و تحلیل میکنم</b>
-از دکمه <b>📊 ژورنال معاملات</b> توی منوی اصلی استفاده کن
-
-
-<b>⚙️ مدیریت</b>
-<code>/status</code> — وضعیت مصرف و اشتراک
-<code>/cancel</code> — لغو عملیات در حال انجام
-
-💡 {random_tip}
-    """
+    text = HELP_TEXT.format(tip=random_tip)
 
     buttons = [[Button.inline("🔙 بازگشت به منوی اصلی", b"back_to_main")]]
     await event.reply(text, buttons=buttons, parse_mode="html")
