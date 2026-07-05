@@ -1,5 +1,5 @@
 import random
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from telethon import Button
 
 from skills import SKILLS, get_skill
@@ -200,6 +200,191 @@ async def cancel_pending_cb(self: "TelegramBot", event: Any) -> None:
     except Exception:
         pass
 
+# ─── Reply-Ask Helpers ─────────────────────────────────────────────
+
+# Maximum hops in a reply chain before we stop following.
+_REPLY_CHAIN_MAX_HOPS: int = 5
+# Total character limit across the entire reply chain (to prevent OOM).
+_REPLY_CHAIN_MAX_CHARS: int = 4000
+
+
+async def resolve_reply_chain(
+    event: Any,
+    max_hops: int = _REPLY_CHAIN_MAX_HOPS,
+    max_chars: int = _REPLY_CHAIN_MAX_CHARS,
+) -> List[Dict[str, Any]]:
+    """Walk the reply chain backwards, collecting text, sender info, and the first image.
+
+    Follows ``event.is_reply`` links up to ``max_hops`` levels deep,
+    extracting the text content and sender identity from each message.
+    The **first** photo encountered in the chain is returned as raw bytes;
+    subsequent photos are ignored (only one image per request is supported).
+
+    Sender information (username and display name) is resolved via
+    ``reply_msg.get_sender()`` for each hop.  If resolution fails the
+    fields are set to ``None`` — downstream callers (see
+    ``_format_reply_ask_message``) gracefully fall back to the bare
+    quote format.
+
+    If the combined text exceeds ``max_chars``, the deepest levels are
+    truncated first with an appended ``… (truncated)`` marker.
+
+    Args:
+        event: The incoming Telethon event (must support ``is_reply`` and
+            ``get_reply_message()``).
+        max_hops: Maximum number of reply hops to follow.
+        max_chars: Maximum total characters across the chain.
+
+    Returns:
+        List of dicts, each containing:
+        - ``text``: The message text (may be empty).
+        - ``image``: Raw image bytes (``None`` if no photo or already found).
+        - ``level``: 1-indexed depth (1 = immediate reply, 2 = reply-to-reply…).
+        - ``sender_id``: Telegram user ID of the message author.
+        - ``sender_username``: Telegram @username (``None`` if unavailable).
+        - ``sender_display_name``: First + last name (``None`` if unavailable).
+    """
+    chain: List[Dict[str, Any]] = []
+    total_chars: int = 0
+    image_found: bool = False
+    current = event
+
+    for _ in range(max_hops):
+        if not current.is_reply:
+            break
+        try:
+            reply_msg = await current.get_reply_message()
+        except Exception:
+            break
+        if not reply_msg:
+            break
+
+        text = (reply_msg.text or "").strip()
+        image = None
+        if reply_msg.photo and not image_found:
+            try:
+                image = await reply_msg.download_media(bytes)
+                image_found = True
+            except Exception:
+                pass
+
+        sender_username = None
+        sender_display_name = None
+        try:
+            sender = await reply_msg.get_sender()
+            if sender:
+                sender_username = getattr(sender, 'username', None)
+                # User objects use first/last name; Chat/Channel use title
+                first = getattr(sender, 'first_name', None)
+                last = getattr(sender, 'last_name', None)
+                title = getattr(sender, 'title', None)
+                if first is not None or last is not None:
+                    sender_display_name = ((first or '') + ' ' + (last or '')).strip() or None
+                elif title:
+                    sender_display_name = title
+        except Exception:
+            pass
+
+        total_chars += len(text)
+        chain.append({
+            "text": text,
+            "image": image,
+            "level": len(chain) + 1,
+            "sender_id": reply_msg.sender_id,
+            "sender_username": sender_username,
+            "sender_display_name": sender_display_name,
+        })
+
+        # Move to the next level in the chain
+        current = reply_msg
+
+    # Truncate from the deepest level if total exceeds max_chars
+    if total_chars > max_chars:
+        for item in reversed(chain):
+            excess = total_chars - max_chars
+            if excess <= 0:
+                break
+            item_text = item["text"]
+            if not item_text:
+                continue
+            if len(item_text) > excess:
+                trim_point = max(0, len(item_text) - excess - 20)
+                item["text"] = item_text[:trim_point] + "\n… (truncated)"
+                total_chars -= excess
+            else:
+                total_chars -= len(item_text)
+                item["text"] = ""
+
+    return chain
+
+
+def _format_reply_ask_message(
+    user_text: str,
+    reply_chain: List[Dict[str, Any]],
+) -> str:
+    """Build the structured message text for a reply-to-ask request.
+
+    When both ``user_text`` and a ``reply_chain`` are present, the user's
+    text is placed first (with a trailing colon), followed by each level of
+    the reply chain wrapped in ``««« … »»»`` delimiters.  The chain is
+    ordered from outermost (deepest replied-to) to innermost (most recent).
+
+    The delimiter nesting depth indicates the reply level:
+    - Level 1: ``«««text»»»``
+    - Level 2: ``«««««text»»»»»``
+    - etc.
+
+    **Sender attribution**
+
+    Each quoted block is prefixed with sender information resolved by
+    ``resolve_reply_chain``.  The format is:
+
+    - If both @username and display name are available:
+      ``«««@username (First Last): text»»»``
+    - If only @username is available:
+      ``«««@username: text»»»``
+    - If only display name is available:
+      ``«««First Last: text»»»``
+    - If neither is available:
+      ``«««text»»»``  (bare quote, unchanged)
+
+    When only one of the two is present, the other is omitted entirely.
+
+    Args:
+        user_text: The user's own text after ``/ask`` (may be empty).
+        reply_chain: The resolved reply chain from ``resolve_reply_chain()``.
+
+    Returns:
+        A single formatted string ready to be sent as the user message
+        to the AI model.
+    """
+    parts: List[str] = []
+
+    if user_text:
+        parts.append(user_text + ":")
+
+    for item in reversed(reply_chain):
+        text = item["text"]
+        if not text:
+            continue
+        level = item["level"]
+        opener = "«" * level
+        closer = "»" * level
+
+        sender_username: Optional[str] = item.get("sender_username")
+        sender_display_name: Optional[str] = item.get("sender_display_name")
+
+        sender_prefix = ""
+        if sender_username and sender_display_name:
+            sender_prefix = f"@{sender_username} ({sender_display_name}): "
+        elif sender_username:
+            sender_prefix = f"@{sender_username}: "
+        elif sender_display_name:
+            sender_prefix = f"{sender_display_name}: "
+
+        parts.append(f"{opener}{sender_prefix}{text}{closer}")
+
+    return "\n\n".join(parts)
 
 # ─── Quick Ask Shortcuts ───────────────────────────────────────────
 
@@ -277,7 +462,80 @@ async def _enter_quick_ask(self: "TelegramBot", event: Any, skill_key: str) -> N
     self.pending_message[(uid, "menu_prompt")] = msg
 
 
+
 async def ask_cmd(self: "TelegramBot", event: Any) -> None:
+    """Handle the /ask command.
+
+    Three distinct paths depending on input:
+
+    1. **Reply-to-message** (with or without inline text) — stateless:
+       Walks the reply chain, builds a formatted message, and sends it
+       directly to the AI model.  No conversation history is saved.
+       If the replied message has no text AND no image (sticker, voice,
+       deleted message, etc.) the user receives a notification instead
+       of a blank query.
+
+    2. **Standalone ``/ask <text>``** (no reply) — stateless:
+       The inline text is sent directly to the AI model as a standalone
+       query.  No conversation history is saved.
+
+    3. **Bare ``/ask``** (no reply, no inline text) — normal flow:
+       Prompts the user for their message via ``_enter_quick_ask``.
+       Conversation history IS saved (standard window-based flow).
+
+    Args:
+        event: Incoming Telethon message event.
+    """
+    uid = event.sender_id
+    parts = (event.text or "").strip().split(maxsplit=1)
+    text_after_cmd = parts[1].strip() if len(parts) > 1 else ""
+
+    # ── Stateless path: reply or inline text present ────────────────
+    if event.is_reply or text_after_cmd:
+        from .ai import _process_reply_ask
+
+        event_image_data = None
+        if event.photo:
+            event_image_data = await event.download_media(bytes)
+
+        chain = []
+        if event.is_reply:
+            chain = await resolve_reply_chain(event)
+
+        # Event photo takes priority over reply chain image
+        image_data = event_image_data
+        if image_data is None and chain:
+            for item in chain:
+                if item["image"]:
+                    image_data = item["image"]
+                    break
+
+        formatted_text = _format_reply_ask_message(text_after_cmd, chain)
+
+        # If the combined result is empty AND there's no image, we cannot
+        # send a blank query to the model.  Two sub‑cases:
+        #
+        # 1. User replied to a message — the replied message has no text
+        #    or image content (sticker, voice, deleted message, etc.).
+        #    Inform the user instead of falling into the verify panel.
+        # 2. Bare /ask (no reply, no inline text) — should never reach
+        #    here because the outer `if event.is_reply or text_after_cmd`
+        #    gate would be False.  Safety fallback to the normal flow.
+        if not formatted_text and not image_data:
+            if event.is_reply:
+                await event.reply("❌ پیامی که به آن ریپلای کرده‌اید محتوای متنی ندارد.")
+                return
+            await _enter_quick_ask(self, event, "default")
+            return
+
+        await _process_reply_ask(
+            self, event, formatted_text,
+            user_text=text_after_cmd, reply_chain=chain,
+            image_data=image_data,
+        )
+        return
+
+    # ── Normal (conversational) /ask ────────────────────────────────
     await _enter_quick_ask(self, event, "default")
 
 

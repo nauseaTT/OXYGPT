@@ -109,7 +109,13 @@ class TelegramBot:
         self._agg_cache_time: Optional[datetime] = None
         self._classifier_service: Optional[AI_Service] = None
 
-        self.admin_ids: List[int] = [8071301975]
+        # Load admin IDs from environment variable
+        admin_ids_str = os.environ.get("ADMIN_IDS", "")
+        if admin_ids_str:
+            self.admin_ids = [int(x.strip()) for x in admin_ids_str.split(",") if x.strip().lstrip('-').isdigit()]
+        else:
+            admin_user_id = int(os.environ.get("ADMIN_USER_ID", "0"))
+            self.admin_ids = [admin_user_id] if admin_user_id else [8071301975]
         self.mentor_prompts: Dict[str, str] = {
             "micheal": micheal_prompt,
             "daye": daye_prompt,

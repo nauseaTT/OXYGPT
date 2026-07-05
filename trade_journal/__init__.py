@@ -65,7 +65,8 @@ async def _do_backup(client: TelegramClient) -> None:
     from .database import _DB_PATH, _get_conn
     import aiosqlite
 
-    ADMIN_USER_ID = 8071301975
+    admin_id_env = os.environ.get("ADMIN_USER_ID")
+    ADMIN_USER_ID = int(admin_id_env) if admin_id_env and admin_id_env.strip().lstrip('-').isdigit() else 8071301975
 
     if not os.path.exists(_DB_PATH):
         logger.warning("Database file not found for backup")
