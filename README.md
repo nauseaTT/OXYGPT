@@ -56,6 +56,7 @@ A production-grade Telegram bot powered by Google Gemini and OpenAI-compatible A
 - **Inline query support** — Quick mentor selection via Telegram inline mode
 - **Trade Journal module** — Full trade logging, analysis, statistics, templates, and notifications
 - **Channel Watcher module** — AI-powered monitoring of Telegram channels with smart classification
+- **Reply-to-Ask** — Stateless `/ask` on replied messages: resolves nested reply chains with sender attribution, zero history persistence
 - **Collapsible long messages** — Auto-collapse for lengthy responses with expand/collapse toggle
 - **Market data caching** — File-based JSON cache to reduce API calls
 - **Separate databases** — Independent SQLite databases for bot, trade journal, and channel watcher
@@ -423,6 +424,21 @@ General-purpose AI assistant with configurable skills:
 - `/learn` — Socratic teaching method
 - `/code` — Programming assistant
 - `/deep` — Deep analytical thinking
+
+#### Reply-to-Ask (`/ask` on a replied message)
+
+When `/ask` is used as a **reply** to an existing message (with or without additional inline text), the bot enters a **stateless** one-shot analysis mode:
+
+1. **Reply chain resolution** — Walks up to 5 levels of nested replies, collecting text and the first image from each level.
+2. **Sender attribution** — Each quoted block is prefixed with the original sender's @username and display name so the model can distinguish between speakers:
+   ```
+   «««@username (Display Name): message text»»»
+   ```
+3. **Stateless processing** — A fresh `AI_Service` is created with no window binding and no persisted history. The model receives a special system suffix instructing it to answer in a general/third-person style.
+4. **Usage tracking** — Requests still count against the user's quick-ask limit pool.
+5. **No retry button** — On failure, the user is asked to retype `/ask`.
+
+**Note:** If the replied message has no text or image content (sticker, voice, deleted message, etc.), the bot notifies the user instead of sending a blank query to the model.
 
 ### Mentor Mode (`/micheal`, `/daye`, `/zeussy`, `/albrooks`)
 

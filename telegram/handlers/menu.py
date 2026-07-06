@@ -383,6 +383,7 @@ async def back_to_main_cb(self: "TelegramBot", event: Any) -> None:
         ],
         [
             Button.inline("ℹ️ راهنما", b"help_menu"),
+            Button.inline("🛟 پشتیبان هوشمند", b"support_entry", style="success"),
         ]
     ]
     if uid in self.admin_ids:

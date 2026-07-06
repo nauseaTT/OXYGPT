@@ -28,6 +28,9 @@ async def admin_panel(self: "TelegramBot", event: Any) -> None:
     agg = self.aggregate_api_status()
     text = self.format_status_report(agg)
 
+    support_enabled = self.db.get_setting("support_assistant_enabled", "1") == "1"
+    support_toggle_label = "🛟 دستیار پشتیبان: فعال ✅" if support_enabled else "🛟 دستیار پشتیبان: غیرفعال ❌"
+
     await event.edit(
         text,
         buttons=[
@@ -38,10 +41,30 @@ async def admin_panel(self: "TelegramBot", event: Any) -> None:
             [Button.inline("🚫 Block Management", b"admin_block_management", style="danger")],
             [Button.inline("🗑 Reset Usage", b"admin_reset", style="danger")],
             [Button.inline("📄 Export Report", b"admin_export", style="success")],
-            [Button.inline("🤖 CW Classifier Model", b"cw_classifier_model", style="success")]
+            [Button.inline("🤖 CW Classifier Model", b"cw_classifier_model", style="success")],
+            [Button.inline(support_toggle_label, b"admin_toggle_support")],
         ],
         parse_mode="html"
     )
+
+
+async def admin_toggle_support_cb(self: "TelegramBot", event: Any) -> None:
+    """Enable or disable the AI Support Assistant feature for all users.
+
+    Stored in the generic `settings` key-value table (``support_assistant_enabled``,
+    "1"/"0"), consistent with every other admin-tunable flag in this bot.
+    When disabled, `support_entry_cb`/`support_cmd` in `telegram/handlers/support.py`
+    reject entry with a friendly message instead of starting a session.
+    """
+    uid = event.sender_id
+    if uid not in self.admin_ids:
+        await event.answer("دسترسی ادمین یافت نشد.", alert=True)
+        return
+
+    current = self.db.get_setting("support_assistant_enabled", "1") == "1"
+    self.db.save_setting("support_assistant_enabled", "0" if current else "1")
+    await event.answer("دستیار پشتیبان غیرفعال شد." if current else "دستیار پشتیبان فعال شد.", alert=True)
+    await admin_panel(self, event)
 
 
 async def admin_refresh(self: "TelegramBot", event: Any) -> None:
@@ -1148,12 +1171,14 @@ async def admin_models(self: "TelegramBot", event: Any) -> None:
             f"۱. مدل سرچ وب: <code>{agg.get('search_model', 'N/A')}</code>\n"
             f"۲. مدل سوال سریع: <code>{self.db.get_setting('openai_quick_ask_model', 'N/A')}</code>\n"
             f"۳. مدل منتورها: <code>{self.db.get_setting('openai_mentors_model', 'N/A')}</code>\n"
-            f"۴. مدل پشتیبان: <code>{self.db.get_setting('openai_fallback_model', 'N/A')}</code>\n"
+            f"۴. مدل پشتیبان (fallback): <code>{self.db.get_setting('openai_fallback_model', 'N/A')}</code>\n"
+            f"۵. 🛟 مدل دستیار پشتیبانی هوشمند: <code>{self.db.get_setting('openai_support_model', 'N/A')}</code>\n"
         )
         buttons = [
             [Button.inline("تغییر مدل سوال سریع", b"change_model:openai_quick_ask_model")],
             [Button.inline("تغییر مدل منتورها", b"change_model:openai_mentors_model")],
-            [Button.inline("تغییر مدل پشتیبان", b"change_model:openai_fallback_model")],
+            [Button.inline("تغییر مدل پشتیبان (fallback)", b"change_model:openai_fallback_model")],
+            [Button.inline("🛟 تغییر مدل دستیار پشتیبانی هوشمند", b"change_model:openai_support_model")],
             [Button.inline("🔙 بازگشت به پنل ادمین", b"admin_panel")]
         ]
     else:
@@ -1162,13 +1187,15 @@ async def admin_models(self: "TelegramBot", event: Any) -> None:
             f"۱. مدل سرچ وب: <code>{agg['search_model']}</code>\n"
             f"۲. مدل سوال سریع: <code>{agg['quick_ask_model']}</code>\n"
             f"۳. مدل منتورها: <code>{agg['mentors_model']}</code>\n"
-            f"۴. مدل پشتیبان: <code>{agg['fallback_model']}</code>\n"
+            f"۴. مدل پشتیبان (fallback): <code>{agg['fallback_model']}</code>\n"
+            f"۵. 🛟 مدل دستیار پشتیبانی هوشمند: <code>{self.db.get_setting('support_model', 'N/A')}</code>\n"
         )
         buttons = [
             [Button.inline("تغییر مدل سرچ وب", b"change_model:search_model")],
             [Button.inline("تغییر مدل سوال سریع", b"change_model:quick_ask_model")],
             [Button.inline("تغییر مدل منتورها", b"change_model:mentors_model")],
-            [Button.inline("تغییر مدل پشتیبان", b"change_model:fallback_model")],
+            [Button.inline("تغییر مدل پشتیبان (fallback)", b"change_model:fallback_model")],
+            [Button.inline("🛟 تغییر مدل دستیار پشتیبانی هوشمند", b"change_model:support_model")],
             [Button.inline("🔙 بازگشت به پنل ادمین", b"admin_panel")]
         ]
 
@@ -1216,6 +1243,8 @@ async def change_model_menu(self: "TelegramBot", event: Any) -> None:
                 [Button.inline(f"gemini-3.5-flash{mark('gemini-3.5-flash')}", f"set_model:{key}:gemini-3.5-flash".encode())],
                 [Button.inline(f"gemini-3.1-flash-lite{mark('gemini-3.1-flash-lite')}", f"set_model:{key}:gemini-3.1-flash-lite".encode())],
                 [Button.inline(f"gemini-2.5-flash{mark('gemini-2.5-flash')}", f"set_model:{key}:gemini-2.5-flash".encode())],
+                [Button.inline(f"gemini-2.5-flash-lite{mark('gemini-2.5-flash-lite')}", f"set_model:{key}:gemini-2.5-flash-lite".encode())],
+                [Button.inline(f"gemini-3-flash-preview{mark('gemini-3-flash-preview')}", f"set_model:{key}:gemini-3-flash-preview".encode())],
                 [Button.inline("🔙 لغو و بازگشت", b"admin_models")]
             ],
             parse_mode="html"

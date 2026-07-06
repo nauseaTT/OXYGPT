@@ -106,6 +106,7 @@ async def start(self: "TelegramBot", event: Any) -> None:
         ],
         [
             Button.inline("ℹ️ راهنما", b"help_menu"),
+            Button.inline("🛟 پشتیبان هوشمند", b"support_entry", style="success"),
         ]
     ]
 
