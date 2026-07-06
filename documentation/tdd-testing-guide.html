@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="راهنمای جامع و فارسی توسعه تست‌محور (TDD) و تست‌نویسی حرفه‌ای در پایتون — از صفر تا پیشرفته با مثال‌های واقعی از پروژه OXYGPT">
+<title>راهنمای جامع تست‌نویسی و TDD | OXYGPT</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   طراحی: پالت، توکن‌های رنگ، تم روشن و تیره
+   ═══════════════════════════════════════════════════════════════ */
+:root{
+  --bg:#f7f8fb; --bg-soft:#eef1f7; --surface:#ffffff; --surface-2:#f2f4f9;
+  --text:#1a2138; --text-soft:#5a6480; --muted:#8b93ab;
+  --border:#e2e7f2; --border-soft:#eef1f7;
+  --brand:#4361ee; --brand-2:#7048e8; --brand-soft:#eef1ff;
+  --accent:#e3116c; --ok:#12a150; --ok-soft:#e5f6ec; --warn:#e8a400;
+  --err:#e5484d; --err-soft:#fdecec; --refactor:#7048e8; --refactor-soft:#f1ecfd;
+  --code-bg:#1e2233; --code-text:#e6e9f2; --shadow:0 10px 40px rgba(26,33,56,.08);
+  --shadow-sm:0 4px 16px rgba(26,33,56,.06);
+  --radius:18px; --radius-sm:12px; --maxw:1180px;
+  --mono:'Fira Code','SFMono-Regular',Consolas,monospace;
+}
+html[data-theme="dark"]{
+  --bg:#0f1220; --bg-soft:#161a2e; --surface:#171b2f; --surface-2:#1e2338;
+  --text:#e8ebf5; --text-soft:#a9b1cc; --muted:#727aa0;
+  --border:#2a3050; --border-soft:#232842;
+  --brand:#6b83ff; --brand-2:#9775fa; --brand-soft:#1c2242;
+  --accent:#ff5fa2; --ok:#3ecf78; --ok-soft:#12331f; --warn:#f0b429;
+  --err:#ff6b6f; --err-soft:#3a1c1e; --refactor:#9775fa; --refactor-soft:#241a3d;
+  --code-bg:#0b0e1a; --code-text:#e6e9f2; --shadow:0 10px 40px rgba(0,0,0,.4);
+  --shadow-sm:0 4px 16px rgba(0,0,0,.3);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:90px}
+body{
+  font-family:'Vazirmatn',Tahoma,sans-serif;background:var(--bg);color:var(--text);
+  line-height:1.9;font-size:16.5px;transition:background .3s,color .3s;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden;
+}
+::selection{background:var(--brand);color:#fff}
+
+/* اسکرول‌بار */
+::-webkit-scrollbar{width:11px;height:11px}
+::-webkit-scrollbar-track{background:var(--bg-soft)}
+::-webkit-scrollbar-thumb{background:var(--muted);border-radius:8px;border:3px solid var(--bg-soft)}
+::-webkit-scrollbar-thumb:hover{background:var(--brand)}
+
+/* ═══════════════════════════════════════════════════════════════
+   نوار پیشرفت خواندن + هدر چسبان
+   ═══════════════════════════════════════════════════════════════ */
+#progress{position:fixed;top:0;right:0;height:4px;width:0;z-index:200;
+  background:linear-gradient(90deg,var(--brand),var(--brand-2),var(--accent));transition:width .1s}
+header.topbar{
+  position:sticky;top:0;z-index:100;background:color-mix(in srgb,var(--surface) 88%,transparent);
+  backdrop-filter:blur(14px);border-bottom:1px solid var(--border);
+}
+.topbar-inner{max-width:var(--maxw);margin:0 auto;padding:14px 22px;
+  display:flex;align-items:center;gap:14px;justify-content:space-between}
+.brand{display:flex;align-items:center;gap:11px;font-weight:800;font-size:1.15rem}
+.brand .logo{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;
+  background:linear-gradient(135deg,var(--brand),var(--brand-2));color:#fff;font-size:1.2rem;box-shadow:var(--shadow-sm)}
+.brand small{display:block;font-weight:500;font-size:.72rem;color:var(--muted);margin-top:-3px}
+.top-actions{display:flex;align-items:center;gap:10px}
+.icon-btn{width:42px;height:42px;border-radius:11px;border:1px solid var(--border);
+  background:var(--surface);color:var(--text);cursor:pointer;font-size:1.15rem;
+  display:grid;place-items:center;transition:.2s}
+.icon-btn:hover{border-color:var(--brand);color:var(--brand);transform:translateY(-2px)}
+
+/* ═══════════════════════════════════════════════════════════════
+   چیدمان اصلی: سایدبار + محتوا
+   ═══════════════════════════════════════════════════════════════ */
+.layout{max-width:var(--maxw);margin:0 auto;display:grid;
+  grid-template-columns:270px 1fr;gap:34px;padding:34px 22px 90px}
+nav.toc{position:sticky;top:90px;align-self:start;max-height:calc(100vh - 110px);
+  overflow-y:auto;background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--radius);padding:20px;box-shadow:var(--shadow-sm)}
+nav.toc h4{font-size:.8rem;color:var(--muted);text-transform:uppercase;
+  letter-spacing:.5px;margin-bottom:12px}
+nav.toc a{display:block;color:var(--text-soft);text-decoration:none;padding:8px 12px;
+  border-radius:10px;font-size:.92rem;margin-bottom:2px;transition:.18s;border-right:3px solid transparent}
+nav.toc a:hover{background:var(--surface-2);color:var(--text)}
+nav.toc a.active{background:var(--brand-soft);color:var(--brand);
+  border-right-color:var(--brand);font-weight:600}
+nav.toc a.sub{padding-right:26px;font-size:.85rem}
+main{min-width:0}
+
+/* ═══════════════════════════════════════════════════════════════
+   هیرو
+   ═══════════════════════════════════════════════════════════════ */
+.hero{background:linear-gradient(135deg,var(--brand) 0%,var(--brand-2) 60%,var(--accent) 130%);
+  color:#fff;border-radius:26px;padding:52px 40px;margin-bottom:38px;position:relative;
+  overflow:hidden;box-shadow:var(--shadow)}
+.hero::before{content:"";position:absolute;inset:0;
+  background:radial-gradient(circle at 85% 15%,rgba(255,255,255,.18),transparent 45%),
+  radial-gradient(circle at 10% 90%,rgba(255,255,255,.12),transparent 40%)}
+.hero-badge{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.18);
+  padding:7px 15px;border-radius:30px;font-size:.82rem;font-weight:600;margin-bottom:18px;
+  backdrop-filter:blur(6px);position:relative}
+.hero h1{font-size:2.6rem;font-weight:900;line-height:1.35;margin-bottom:14px;position:relative}
+.hero p{font-size:1.12rem;opacity:.95;max-width:640px;position:relative;font-weight:400}
+.hero-stats{display:flex;gap:26px;margin-top:28px;flex-wrap:wrap;position:relative}
+.hero-stat b{display:block;font-size:1.7rem;font-weight:800}
+.hero-stat span{font-size:.85rem;opacity:.9}
+
+/* ═══════════════════════════════════════════════════════════════
+   بخش‌ها و تیترها
+   ═══════════════════════════════════════════════════════════════ */
+section{margin-bottom:46px;scroll-margin-top:90px}
+h2.sec{font-size:1.85rem;font-weight:800;margin-bottom:8px;display:flex;align-items:center;gap:12px}
+h2.sec .num{width:42px;height:42px;flex:none;border-radius:12px;display:grid;place-items:center;
+  background:var(--brand-soft);color:var(--brand);font-size:1.05rem;font-weight:800}
+.sec-lead{color:var(--text-soft);margin-bottom:24px;font-size:1.03rem}
+h3{font-size:1.3rem;font-weight:700;margin:30px 0 12px}
+h4{font-size:1.08rem;font-weight:700;margin:22px 0 10px;color:var(--text)}
+p{margin-bottom:14px;color:var(--text-soft)}
+p strong,li strong{color:var(--text);font-weight:700}
+a.inline{color:var(--brand);text-decoration:none;border-bottom:1px dashed var(--brand)}
+ul,ol{margin:0 22px 16px;color:var(--text-soft)}
+li{margin-bottom:8px}
+.lead-block{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:26px 28px;box-shadow:var(--shadow-sm)}
+
+/* کارت‌ها */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px;margin:22px 0}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:22px;box-shadow:var(--shadow-sm);transition:.2s}
+.card:hover{transform:translateY(-4px);box-shadow:var(--shadow);border-color:var(--brand)}
+.card .ic{width:48px;height:48px;border-radius:13px;display:grid;place-items:center;
+  font-size:1.4rem;margin-bottom:14px;background:var(--brand-soft);color:var(--brand)}
+.card h4{margin:0 0 6px}
+.card p{font-size:.92rem;margin:0}
+
+/* جعبه‌های هشدار/نکته */
+.callout{border-radius:var(--radius-sm);padding:16px 20px 16px 18px;margin:20px 0;
+  border-right:5px solid var(--brand);background:var(--brand-soft);display:flex;gap:13px}
+.callout .ci{font-size:1.3rem;flex:none;line-height:1.6}
+.callout.tip{border-color:var(--ok);background:var(--ok-soft)}
+.callout.warn{border-color:var(--warn);background:color-mix(in srgb,var(--warn) 14%,transparent)}
+.callout.err{border-color:var(--err);background:var(--err-soft)}
+.callout b{color:var(--text)}
+.callout p{margin:0;color:var(--text)}
+
+/* ═══════════════════════════════════════════════════════════════
+   بلوک کد + دکمه کپی
+   ═══════════════════════════════════════════════════════════════ */
+.code{position:relative;margin:18px 0;border-radius:var(--radius-sm);overflow:hidden;
+  border:1px solid var(--border);box-shadow:var(--shadow-sm)}
+.code-head{background:var(--surface-2);padding:9px 15px;display:flex;align-items:center;
+  justify-content:space-between;border-bottom:1px solid var(--border)}
+.code-head .dots{display:flex;gap:6px}
+.code-head .dots i{width:11px;height:11px;border-radius:50%}
+.code-head .dots i:nth-child(1){background:#ff5f57}
+.code-head .dots i:nth-child(2){background:#febc2e}
+.code-head .dots i:nth-child(3){background:#28c840}
+.code-head .lbl{font-family:var(--mono);font-size:.78rem;color:var(--muted);margin-inline-start:auto;margin-inline-end:10px}
+.copy-btn{background:var(--surface);border:1px solid var(--border);color:var(--text-soft);
+  font-family:'Vazirmatn';font-size:.78rem;padding:4px 11px;border-radius:8px;cursor:pointer;transition:.18s}
+.copy-btn:hover{background:var(--brand);color:#fff;border-color:var(--brand)}
+pre{background:var(--code-bg);color:var(--code-text);padding:18px 20px;overflow-x:auto;
+  direction:ltr;text-align:left;font-family:var(--mono);font-size:.86rem;line-height:1.75}
+pre code{font-family:var(--mono)}
+code.inl{font-family:var(--mono);background:var(--surface-2);color:var(--accent);
+  padding:2px 7px;border-radius:6px;font-size:.85em;direction:ltr;display:inline-block}
+/* رنگ‌آمیزی ساده نحو */
+.tok-kw{color:#ff7b9c}.tok-fn{color:#82aaff}.tok-str{color:#c3e88d}
+.tok-com{color:#697098;font-style:italic}.tok-num{color:#f78c6c}.tok-dec{color:#ffcb6b}
+
+/* ═══════════════════════════════════════════════════════════════
+   چرخه قرمز/سبز/بازآرایی
+   ═══════════════════════════════════════════════════════════════ */
+.rgr{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:24px 0}
+.rgr .phase{border-radius:var(--radius);padding:22px;border:2px solid;position:relative;overflow:hidden}
+.rgr .red{border-color:var(--err);background:var(--err-soft)}
+.rgr .green{border-color:var(--ok);background:var(--ok-soft)}
+.rgr .refac{border-color:var(--refactor);background:var(--refactor-soft)}
+.rgr .phase .tag{display:inline-block;font-weight:800;font-size:.78rem;padding:4px 12px;
+  border-radius:20px;color:#fff;margin-bottom:12px}
+.rgr .red .tag{background:var(--err)}.rgr .green .tag{background:var(--ok)}.rgr .refac .tag{background:var(--refactor)}
+.rgr .phase h4{margin:0 0 8px}
+.rgr .phase p{font-size:.9rem;margin:0}
+.rgr-flow{text-align:center;font-size:2rem;color:var(--muted);margin:-4px 0 4px}
+
+/* هرم تست */
+.pyramid{display:flex;flex-direction:column;align-items:center;gap:10px;margin:26px 0}
+.pyr-level{color:#fff;border-radius:12px;padding:16px 20px;text-align:center;font-weight:700;
+  box-shadow:var(--shadow-sm);position:relative}
+.pyr-level small{display:block;font-weight:400;font-size:.78rem;opacity:.92;margin-top:3px}
+.pyr-e2e{width:42%;background:linear-gradient(135deg,#e5484d,#ff7b9c)}
+.pyr-int{width:66%;background:linear-gradient(135deg,#e8a400,#ffcb6b)}
+.pyr-unit{width:92%;background:linear-gradient(135deg,#12a150,#3ecf78)}
+
+/* جدول */
+.table-wrap{overflow-x:auto;margin:20px 0;border-radius:var(--radius-sm);border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:.92rem;min-width:520px}
+th,td{padding:13px 16px;text-align:right;border-bottom:1px solid var(--border-soft)}
+th{background:var(--surface-2);font-weight:700;color:var(--text)}
+td{color:var(--text-soft)}
+tr:last-child td{border-bottom:none}
+tbody tr:hover,tr:hover{background:var(--surface-2)}
+
+/* آکاردئون */
+.acc{border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:12px;
+  overflow:hidden;background:var(--surface)}
+.acc summary{padding:16px 20px;cursor:pointer;font-weight:600;display:flex;
+  align-items:center;gap:10px;list-style:none;transition:.18s}
+.acc summary::-webkit-details-marker{display:none}
+.acc summary::before{content:"◀";color:var(--brand);font-size:.7rem;transition:.25s}
+.acc[open] summary::before{transform:rotate(-90deg)}
+.acc summary:hover{background:var(--surface-2)}
+.acc .acc-body{padding:0 20px 18px}
+
+/* گام‌ها */
+.steps{counter-reset:s;margin:20px 0}
+.step{position:relative;padding:0 54px 22px 0;border-right:2px solid var(--border);margin-right:20px}
+.step:last-child{border-right-color:transparent}
+.step::before{counter-increment:s;content:counter(s);position:absolute;right:-19px;top:-4px;
+  width:36px;height:36px;border-radius:50%;background:var(--brand);color:#fff;
+  display:grid;place-items:center;font-weight:800;box-shadow:0 0 0 5px var(--bg)}
+.step h4{margin:0 0 6px}
+.step p{margin:0;font-size:.94rem}
+
+/* اسکور خوانایی FIRST */
+.first-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin:20px 0}
+.first-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);
+  padding:18px;text-align:center;box-shadow:var(--shadow-sm)}
+.first-item .letter{font-size:2rem;font-weight:900;color:var(--brand);line-height:1}
+.first-item b{display:block;margin:8px 0 4px}
+.first-item span{font-size:.82rem;color:var(--muted)}
+
+/* پاورقی */
+footer{border-top:1px solid var(--border);padding:36px 22px;text-align:center;color:var(--muted);font-size:.9rem}
+footer a{color:var(--brand);text-decoration:none}
+.foot-sources{max-width:var(--maxw);margin:0 auto 18px;text-align:right}
+.foot-sources h4{color:var(--text-soft);margin-bottom:8px}
+.foot-sources ul{font-size:.85rem}
+
+/* دکمه بالا رفتن */
+#toTop{position:fixed;bottom:26px;left:26px;width:50px;height:50px;border-radius:14px;
+  background:var(--brand);color:#fff;border:none;cursor:pointer;font-size:1.3rem;
+  box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:.3s;z-index:90}
+#toTop.show{opacity:1;pointer-events:auto}
+#toTop:hover{background:var(--brand-2);transform:translateY(-3px)}
+
+/* ═══════════════════════════════════════════════════════════════
+   ریسپانسیو
+   ═══════════════════════════════════════════════════════════════ */
+@media(max-width:960px){
+  .layout{grid-template-columns:1fr;gap:0}
+  nav.toc{position:fixed;top:0;right:-300px;width:280px;height:100vh;max-height:100vh;
+    border-radius:0;z-index:150;transition:right .3s;padding-top:80px}
+  nav.toc.open{right:0}
+  .toc-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:140;opacity:0;
+    pointer-events:none;transition:.3s}
+  .toc-backdrop.show{opacity:1;pointer-events:auto}
+  #menuBtn{display:grid}
+  .rgr{grid-template-columns:1fr}
+}
+@media(min-width:961px){#menuBtn{display:none}.toc-backdrop{display:none}}
+@media(max-width:600px){
+  body{font-size:15.5px}
+  .hero{padding:36px 24px}.hero h1{font-size:1.95rem}
+  h2.sec{font-size:1.5rem}
+  .topbar-inner{padding:12px 16px}
+  .layout{padding:22px 14px 70px}
+  .hero-stats{gap:18px}
+}
+</style>
+</head>
+<body>
+<div id="progress"></div>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <span class="logo">🧪</span>
+      <div>راهنمای تست‌نویسی و TDD
+        <small>آموزش جامع فارسی · پروژه OXYGPT</small>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button class="icon-btn" id="menuBtn" title="فهرست" aria-label="فهرست">☰</button>
+      <button class="icon-btn" id="themeBtn" title="تغییر تم" aria-label="تغییر تم">🌙</button>
+    </div>
+  </div>
+</header>
+
+<div class="toc-backdrop" id="tocBackdrop"></div>
+
+<div class="layout">
+  <!-- ═══════ فهرست ═══════ -->
+  <nav class="toc" id="toc">
+    <h4>فهرست مطالب</h4>
+    <a href="#intro">۱. تست چیست و چرا؟</a>
+    <a href="#types">۲. انواع تست و هرم تست</a>
+    <a href="#anatomy" class="sub">— کالبد یک تست (AAA)</a>
+    <a href="#tdd">۳. توسعه تست‌محور (TDD)</a>
+    <a href="#rgr" class="sub">— چرخه قرمز/سبز/بازآرایی</a>
+    <a href="#firstrun">۴. اولین تست عملی</a>
+    <a href="#pytest">۵. ابزار pytest</a>
+    <a href="#fixtures" class="sub">— فیکسچرها</a>
+    <a href="#param" class="sub">— پارامتری‌سازی</a>
+    <a href="#mock">۶. Mock و ایزوله‌سازی</a>
+    <a href="#async" class="sub">— تست کد async</a>
+    <a href="#good">۷. تستِ خوب (FIRST)</a>
+    <a href="#oxygpt">۸. کاربرد در OXYGPT</a>
+    <a href="#checklist">۹. چک‌لیست و جمع‌بندی</a>
+  </nav>
+
+  <main>
+    <!-- ═══════ هیرو ═══════ -->
+    <div class="hero">
+      <span class="hero-badge">📚 راهنمای کامل · از صفر تا حرفه‌ای</span>
+      <h1>تست‌نویسی و توسعه تست‌محور را عمیق یاد بگیر</h1>
+      <p>در این راهنما یاد می‌گیری تست چیست، چرا حیاتی است، چطور با روش TDD کد بنویسی،
+      و چگونه با <b>pytest</b> برای یک پروژه واقعی مثل <b>OXYGPT</b> تست حرفه‌ای بنویسی —
+      همه با زبان ساده، مثال‌های واقعی و بر پایه منابع معتبر جهانی.</p>
+      <div class="hero-stats">
+        <div class="hero-stat"><b>۹</b><span>فصل آموزشی</span></div>
+        <div class="hero-stat"><b>۳۰+</b><span>مثال کد</span></div>
+        <div class="hero-stat"><b>۱۰۰٪</b><span>فارسی و کاربردی</span></div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════ فصل ۱ ═══════════════════════════ -->
+    <section id="intro">
+      <h2 class="sec"><span class="num">۱</span> تست چیست و چرا اهمیت دارد؟</h2>
+      <p class="sec-lead">قبل از هر ابزار و تکنیکی، باید بدانیم اصلاً «تست» چیست و چه دردی را دوا می‌کند.</p>
+
+      <div class="lead-block">
+        <p><strong>تستِ نرم‌افزار</strong> یعنی نوشتن کدی که کدِ دیگر (کدِ اصلی برنامه) را <b>به‌طور خودکار</b>
+        اجرا می‌کند و بررسی می‌کند آیا رفتار آن همان چیزی است که انتظار داریم یا نه.
+        یک تست، یک ادعا (assertion) دارد: «اگر ورودی این باشد، خروجی باید آن باشد.»</p>
+        <p style="margin-bottom:0">به‌جای اینکه هر بار دستی برنامه را باز کنی و چک کنی که فلان قابلیت کار می‌کند،
+        یک بار تست می‌نویسی و از آن به بعد با یک دستور، <b>صدها بررسی در چند ثانیه</b> انجام می‌شود.</p>
+      </div>
+
+      <h3>یک مثال ساده برای درک شهودی</h3>
+      <p>فرض کن تابعی داری که دو عدد را جمع می‌کند. تست آن یعنی: «به تابع ۲ و ۳ می‌دهم، انتظار دارم ۵ برگرداند.»</p>
+      <div class="code">
+        <div class="code-head"><div class="dots"><i></i><i></i><i></i></div><span class="lbl">example.py</span>
+          <button class="copy-btn">کپی</button></div>
+<pre><code><span class="tok-com"># کد اصلی</span>
+<span class="tok-kw">def</span> <span class="tok-fn">add</span>(a, b):
+    <span class="tok-kw">return</span> a + b
+
+<span class="tok-com"># تست: ادعای ما درباره رفتار تابع</span>
+<span class="tok-kw">def</span> <span class="tok-fn">test_add_two_positive_numbers</span>():
+    <span class="tok-kw">assert</span> <span class="tok-fn">add</span>(<span class="tok-num">2</span>, <span class="tok-num">3</span>) == <span class="tok-num">5</span></code></pre>
+      </div>
+
+      <h3>چرا تست می‌نویسیم؟ (فایده‌های واقعی)</h3>
+      <div class="cards">
+        <div class="card"><div class="ic">🛡️</div><h4>شبکه ایمنی</h4>
+          <p>وقتی کد را تغییر می‌دهی، تست‌ها بلافاصله می‌گویند اگر چیزی را شکستی. بدون ترس refactor می‌کنی.</p></div>
+        <div class="card"><div class="ic">📄</div><h4>مستندسازی زنده</h4>
+          <p>نام و بدنه‌ی هر تست می‌گوید کد «قرار است» چه کند. مستنداتی که هیچ‌وقت قدیمی نمی‌شود.</p></div>
+        <div class="card"><div class="ic">🎯</div><h4>طراحی بهتر</h4>
+          <p>کدی که سخت تست می‌شود، معمولاً بد طراحی شده. تست تو را به سمت کدِ تمیزتر هُل می‌دهد.</p></div>
+        <div class="card"><div class="ic">⚡</div><h4>بازخورد سریع</h4>
+          <p>باگ را در چند ثانیه پیدا می‌کنی، نه چند روز بعد در محیط واقعی و جلوی کاربر.</p></div>
+        <div class="card"><div class="ic">😌</div><h4>اعتماد و آرامش</h4>
+          <p>با یک مجموعه تستِ سبز، با خیال راحت کد را منتشر می‌کنی. «کار می‌کند» دیگر حدس نیست.</p></div>
+        <div class="card"><div class="ic">💰</div><h4>صرفه‌جویی</h4>
+          <p>هزینه‌ی رفعِ باگ در مرحله توسعه، کسری از هزینه‌ی همان باگ در محصولِ منتشرشده است.</p></div>
+      </div>
+
+      <div class="callout warn"><span class="ci">⚠️</span>
+        <div><b>باور غلط رایج:</b> «تست وقت‌گیر است و سرعت را کم می‌کند.»
+        <p>در کوتاه‌مدت کمی کندتر پیش می‌روی، اما در میان‌مدت و بلندمدت به‌شدت سریع‌تر می‌شوی؛
+        چون وقت را صرف دیباگِ دستی و باگ‌های تکراری نمی‌کنی و بی‌ترس تغییر می‌دهی.</p></div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════ فصل ۲ ═══════════════════════════ -->
+    <section id="types">
+      <h2 class="sec"><span class="num">۲</span> انواع تست و هرم تست</h2>
+      <p class="sec-lead">همه‌ی تست‌ها یک‌جور نیستند. هر نوع، سطح متفاوتی از برنامه را می‌سنجد.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>نوع تست</th><th>چه چیزی را می‌سنجد؟</th><th>سرعت</th><th>مثال در OXYGPT</th></tr></thead>
+          <tbody>
+            <tr><td><b>واحد (Unit)</b></td><td>یک تابع/کلاسِ کوچک، به‌صورت ایزوله</td><td>خیلی سریع ⚡</td><td>نرمال‌سازی نماد بازار (افزودن پیشوند <code class="inl">FX:</code>)</td></tr>
+            <tr><td><b>یکپارچگی (Integration)</b></td><td>همکاری چند بخش با هم</td><td>متوسط 🚶</td><td>موتور تولید + منطق fallback بین دو ارائه‌دهنده</td></tr>
+            <tr><td><b>سرتاسری (E2E)</b></td><td>کل مسیر از دید کاربر</td><td>کند 🐢</td><td>پیام کاربر → پاسخ نهایی بات (با mockِ تلگرام)</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>هرم تست (Testing Pyramid)</h3>
+      <p>مارتین فاولر (Martin Fowler) توصیه می‌کند تعداد تست‌ها را مثل یک هرم توزیع کنی:
+      <b>پایه‌ی پهن از تست‌های واحدِ سریع</b>، لایه‌ی میانی کمتر از تست‌های یکپارچگی،
+      و <b>نوکِ باریک</b> از تست‌های سرتاسریِ کند و شکننده.</p>
+      <div class="pyramid">
+        <div class="pyr-level pyr-e2e">سرتاسری (E2E)<small>کم · کند · گران</small></div>
+        <div class="pyr-level pyr-int">یکپارچگی<small>متوسط</small></div>
+        <div class="pyr-level pyr-unit">واحد (Unit)<small>زیاد · سریع · ارزان</small></div>
+      </div>
+      <div class="callout"><span class="ci">💡</span>
+        <div><b>چرا هرم و نه مستطیل یا هرمِ وارونه؟</b>
+        <p>تست‌های سرتاسری کند، شکننده و پرهزینه‌اند. اگر بیشترِ تست‌هایت از این نوع باشند،
+        مجموعه‌ات کُند و بی‌ثبات می‌شود. تست‌های واحد ارزان و سریع‌اند؛ پس بیشترِ اطمینان را از آنجا بگیر.</p></div>
+      </div>
+
+      <!-- کالبد تست -->
+      <h3 id="anatomy">کالبد یک تست خوب: الگوی AAA</h3>
+      <p>تقریباً هر تستِ خوب سه بخش دارد؛ به این الگو <b>Arrange-Act-Assert</b> (آماده‌سازی، اجرا، ادعا) می‌گویند
+      — یک استاندارد جهانی برای خوانا و متمرکز نگه‌داشتن تست.</p>
+      <div class="cards">
+        <div class="card"><div class="ic">🔧</div><h4>Arrange — آماده‌سازی</h4>
+          <p>داده‌ها، اشیاء و پیش‌شرط‌ها را می‌چینی. صحنه را برای اجرا آماده می‌کنی.</p></div>
+        <div class="card"><div class="ic">▶️</div><h4>Act — اجرا</h4>
+          <p>دقیقاً <b>یک</b> رفتار را اجرا می‌کنی؛ همان تابع یا متدی که می‌خواهی بسنجی.</p></div>
+        <div class="card"><div class="ic">✅</div><h4>Assert — ادعا</h4>
+          <p>بررسی می‌کنی نتیجه همان چیزی است که انتظار داشتی. یک تست، یک رفتار.</p></div>
+      </div>
+      <div class="code">
+        <div class="code-head"><div class="dots"><i></i><i></i><i></i></div><span class="lbl">test_aaa.py</span>
+          <button class="copy-btn">کپی</button></div>
+<pre><code><span class="tok-kw">def</span> <span class="tok-fn">test_paid_user_has_higher_request_limit</span>():
+    <span class="tok-com"># Arrange — یک کاربر پولی و محدودیت‌هایش را آماده می‌کنیم</span>
+    user = <span class="tok-fn">User</span>(tier=<span class="tok-str">"paid"</span>)
+
+    <span class="tok-com"># Act — سقف درخواست را می‌خوانیم</span>
+    limit = user.<span class="tok-fn">request_limit</span>()
+
+    <span class="tok-com"># Assert — ادعا می‌کنیم برابر ۷۶۰ است</span>
+    <span class="tok-kw">assert</span> limit == <span class="tok-num">760</span></code></pre>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════ فصل ۳ ═══════════════════════════ -->
+    <section id="tdd">
+      <h2 class="sec"><span class="num">۳</span> توسعه تست‌محور (TDD) چیست؟</h2>
+      <p class="sec-lead">TDD یعنی برعکسِ عادت رایج: <b>اول تست را می‌نویسی، بعد کد را.</b></p>
+
+      <div class="lead-block">
+        <p><strong>Test-Driven Development</strong> (توسعه‌ی هدایت‌شده با تست) روشی است که در آن
+        قبل از نوشتن حتی یک خط از کدِ اصلی، اول تستی می‌نویسی که رفتار مورد نظرت را توصیف می‌کند.
+        این تست ابتدا <b>شکست می‌خورد</b> (چون هنوز کدی نیست)، سپس فقط آن‌قدر کد می‌نویسی که تست سبز شود،
+        و در پایان کد را تمیز می‌کنی.</p>
+        <p style="margin-bottom:0">در TDD، تست نقش «مشخصات فنی» را بازی می‌کند: تو اول تعریف می‌کنی «چه می‌خواهم»،
+        بعد می‌روی سراغ «چطور بسازم». همین جابه‌جایی ترتیب، طراحی را به‌شکل چشمگیری بهتر می‌کند.</p>
+      </div>
+
+      <!-- چرخه -->
+      <h3 id="rgr">چرخه‌ی قرمز → سبز → بازآرایی</h3>
+      <p>قلب TDD یک چرخه‌ی سه‌مرحله‌ایِ کوتاه و تکرارشونده است (Red · Green · Refactor):</p>
+      <div class="rgr">
+        <div class="phase red"><span class="tag">🔴 قرمز · Red</span>
+          <h4>یک تستِ شکست‌خورده بنویس</h4>
+          <p>تستی برای رفتاری که <b>هنوز وجود ندارد</b> می‌نویسی. اجرا می‌کنی و می‌بینی که قرمز/شکست‌خورده است.
+          اینجا داری تعریف می‌کنی «چه می‌خواهم بسازم».</p></div>
+        <div class="phase green"><span class="tag">🟢 سبز · Green</span>
+          <h4>کمترین کد برای عبور</h4>
+          <p>فقط آن‌قدر کد می‌نویسی که تست سبز شود — بدون وسواسِ بهینه‌سازی. هدف فعلاً «کار کردن» است، نه «زیبا بودن».</p></div>
+        <div class="phase refac"><span class="tag">🟣 بازآرایی · Refactor</span>
+          <h4>کد را تمیز کن</h4>
+          <p>حالا که سبز هستی، کد را بهتر می‌کنی: حذف تکرار، نام‌های بهتر، ساختار تمیزتر — با اطمینان،
+          چون تست‌ها اگر چیزی بشکند فوراً می‌گویند.</p></div>
+      </div>
+      <div class="rgr-flow">🔴 → 🟢 → 🟣 → 🔁 (تکرار)</div>
+
+      <div class="callout tip"><span class="ci">✅</span>
+        <div><b>قانون طلایی:</b> هرگز کدِ اصلی ننویس مگر برای عبور دادنِ یک تستِ شکست‌خورده.
+        <p>و هرگز تستِ جدید ننویس تا وقتی همه‌ی تست‌های فعلی سبزند. قدم‌ها را کوچک نگه دار.</p></div>
+      </div>
+
+      <h3>چرا مرحله «قرمز» واقعاً مهم است؟</h3>
+      <p>دیدن شکستِ تست، ثابت می‌کند که تستِ تو <b>واقعاً چیزی را می‌سنجد</b>. تستی که هیچ‌وقت قرمز نشده،
+      شاید اشتباه نوشته شده باشد و همیشه سبز بماند — یعنی بی‌فایده. مرحله قرمز، تستِ تو را تست می‌کند!</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>مرحله</th><th>ذهنیت</th><th>خروجی</th></tr></thead>
+          <tbody>
+            <tr><td>🔴 قرمز</td><td>«چه می‌خواهم؟»</td><td>تستی که شکست می‌خورد</td></tr>
+            <tr><td>🟢 سبز</td><td>«چطور سریع سبزش کنم؟»</td><td>کدی که کار می‌کند</td></tr>
+            <tr><td>🟣 بازآرایی</td><td>«چطور بهترش کنم؟»</td><td>کدِ تمیز و همچنان سبز</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════ فصل ۴ ═══════════════════════════ -->
+    <section id="firstrun">
+      <h2 class="sec"><span class="num">۴</span> اولین تجربه‌ی عملی TDD</h2>
+      <p class="sec-lead">بیایید یک قابلیت واقعی از OXYGPT را با TDD بسازیم:
+      تابعی که نماد بازار را نرمال می‌کند و پیشوند صرافی را اضافه می‌کند.</p>
+
+      <div class="steps">
+        <div class="step"><h4>🔴 قدم ۱: تستِ شکست‌خورده بنویس</h4>
+          <p>هنوز تابعی نداریم. اول انتظارمان را می‌نویسیم: «<code class="inl">EURUSD</code> باید به <code class="inl">FX:EURUSD</code> تبدیل شود.»</p>
+        </div>
+      </div>
+      <div class="code">
+        <div class="code-head"><div class="dots"><i></i><i></i><i></i></div><span class="lbl">test_symbols.py</span>
+          <button class="copy-btn">کپی</button></div>
+<pre><code><span class="tok-kw">from</span> tools <span class="tok-kw">import</span> normalize_symbol   <span class="tok-com"># هنوز وجود ندارد → خطا</span>
+
+<span class="tok-kw">def</span> <span class="tok-fn">test_bare_forex_symbol_gets_fx_prefix</span>():
+    <span class="tok-com"># Arrange + Act</span>
+    result = <span class="tok-fn">normalize_symbol</span>(<span class="tok-str">"EURUSD"</span>)
+    <span class="tok-com"># Assert</span>
+    <span class="tok-kw">assert</span> result == <span class="tok-str">"FX:EURUSD"</span></code></pre>
+      </div>
+      <div class="code">
+        <div class="code-head"><div class="dots"><i></i><i></i><i></i></div><span class="lbl">terminal · قرمز</span>
+          <button class="copy-btn">کپی</button></div>
+<pre><code>$ pytest test_symbols.py
+<span class="tok-com">E   ImportError: cannot import name 'normalize_symbol'</span>
+<span style="color:#ff6b6f">1 failed</span>  🔴  ← عالی! تست ما واقعاً چیزی را می‌سنجد</code></pre>
+      </div>
+
+      <div class="steps">
+        <div class="step"><h4>🟢 قدم ۲: کمترین کد برای سبز شدن</h4>
+          <p>حالا ساده‌ترین کدی که تست را عبور دهد می‌نویسیم.</p></div>
+      </div>
+      <div class="code">
+        <div class="code-head"><div class="dots"><i></i><i></i><i></i></div><span class="lbl">tools.py</span>
+          <button class="copy-btn">کپی</button></div>
+<pre><code><span class="tok-kw">def</span> <span class="tok-fn">normalize_symbol</span>(symbol: str) -> str:
+    <span class="tok-kw">if</span> <span class="tok-str">":"</span> <span class="tok-kw">not in</span> symbol:
+        <span class="tok-kw">return</span> <span class="tok-str">f"FX:{symbol}"</span>
+    <span class="tok-kw">return</span> symbol</code></pre>
+      </div>
+      <div class="code">
+        <div class="code-head"><div class="dots"><i></i><i></i><i></i></div><span class="lbl">terminal · سبز</span>
+          <button class="copy-btn">کپی</button></div>
+<pre><code>$ pytest test_symbols.py
+<span style="color:#3ecf78">1 passed</span>  🟢  ← کار می‌کند!</code></pre>
+      </div>
+
+      <div class="steps">
+        <div class="step"><h4>🟣 قدم ۳: بازآرایی و افزودن حالت‌های بیشتر</h4>
+          <p>حالا تست‌های بیشتری اضافه می‌کنیم (کریپتو، نماد از قبل کامل) و کد را تمیز می‌کنیم — با خیال راحت،
+          چون شبکه‌ی ایمنیِ تست‌ها را داریم.</p></div>
+      </div>
+      <div class="code">
+        <div class="code-head"><div class="dots"><i></i><i></i><i></i></div><span class="lbl">test_symbols.py · گسترش</span>
+          <button class="copy-btn">کپی</button></div>
+<pre><code><span class="tok-kw">import</span> pytest
+<span class="tok-kw">from</span> tools <span class="tok-kw">import</span> normalize_symbol
+
+<span class="tok-dec">@pytest.mark.parametrize</span>(<span class="tok-str">"raw, expected"</span>, [
+    (<span class="tok-str">"EURUSD"</span>,        <span class="tok-str">"FX:EURUSD"</span>),
+    (<span class="tok-str">"FX:GBPUSD"</span>,     <span class="tok-str">"FX:GBPUSD"</span>),      <span class="tok-com"># از قبل کامل → بدون تغییر</span>
+    (<span class="tok-str">"BINANCE:BTCUSDT"</span>, <span class="tok-str">"BINANCE:BTCUSDT"</span>),
+])
+<span class="tok-kw">def</span> <span class="tok-fn">test_symbol_normalization</span>(raw, expected):
+    <span class="tok-kw">assert</span> <span class="tok-fn">normalize_symbol</span>(raw) == expected</code></pre>
+      </div>
+      <div class="callout tip"><span class="ci">🎉</span>
+        <div><b>تبریک!</b> همین الان یک چرخه‌ی کامل TDD را طی کردی: قرمز، سبز، بازآرایی.
+        این دقیقاً همان ریتمی است که در پروژه‌های واقعی تکرار می‌شود.</div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════ فصل ۵ ═══════════════════════════ -->
+    <section id="pytest">
+      <h2 class="sec"><span class="num">۵</span> ابزار pytest — ابزار استاندارد پایتون</h2>
+      <p class="sec-lead">در دنیای پایتون، <b>pytest</b> محبوب‌ترین و قدرتمندترین فریم‌ورک تست است.
+      OXYGPT هم با همین ابزار تست می‌شود.</p>
+
+      <h3>نصب و اجرا</h3>
+      <div class="code">
+        <div class="code-head"><div class="dots"><i></i><i></i><i></i></div><span class="lbl">terminal</span>
+          <button class="copy-btn">کپی</button></div>
+<pre><code><span class="tok-com"># نصب pytest و افزونه تست async</span>
+$ pip install pytest pytest-asyncio
+
+<span class="tok-com"># اجرای همه‌ی تست‌ها</span>
+$ pytest
+
+<span class="tok-com"># اجرای مختصر و خوانا</span>
+$ pytest -q
+
+<span class="tok-com"># اجرای یک فایل یا یک تستِ خاص</span>
+$ pytest tests/test_symbols.py
+$ pytest tests/test_symbols.py::test_symbol_normalization
+
+<span class="tok-com"># نمایش پوشش کد (نیازمند pytest-cov)</span>
+$ pytest --cov=. --cov-report=term-missing</code></pre>
+      </div>
+
+      <div class="callout"><span class="ci">🔎</span>
+        <div><b>pytest چطور تست‌ها را پیدا می‌کند؟</b>
+        <p>به‌طور خودکار دنبال فایل‌های <code class="inl">test_*.py</code>، توابعِ <code class="inl">test_*</code>
+        و کلاس‌های <code class="inl">Test*</code> می‌گردد. کافی است قراردادِ نام‌گذاری را رعایت کنی.</p></div>
+      </div>
+
+      <!-- فیکسچرها -->
+      <h3 id="fixtures">فیکسچرها (Fixtures) — آماده‌سازی قابل‌استفاده مجدد</h3>
+      <p>فیکسچر، تکه‌ای از «آماده‌سازی» (بخش Arrange) است که چند تست به آن نیاز دارند؛
+      مثل یک دیتابیس موقت، یک کلاینت جعلی، یا داده‌ی نمونه. یک بار می‌نویسی، همه‌جا استفاده می‌کنی.</p>
+      <div class="code">
+        <div class="code-head"><div class="dots"><i></i><i></i><i></i></div><span class="lbl">conftest.py</span>
+          <button class="copy-btn">کپی</button></div>
+<pre><code><span class="tok-kw">import</span> pytest
+<span class="tok-kw">from</span> database <span class="tok-kw">import</span> DatabaseManager
+
+<span class="tok-dec">@pytest.fixture</span>
+<span class="tok-kw">def</span> <span class="tok-fn">temp_db</span>(tmp_path):
+    <span class="tok-str">"""یک دیتابیس SQLite موقت و تمیز برای هر تست می‌سازد."""</span>
+    db_file = tmp_path / <span class="tok-str">"test.db"</span>       <span class="tok-com"># tmp_path داخلیِ pytest است</span>
+    db = <span class="tok-fn">DatabaseManager</span>(str(db_file))
+    <span class="tok-kw">yield</span> db                            <span class="tok-com"># تست اینجا اجرا می‌شود</span>
+    db.<span class="tok-fn">close</span>()                          <span class="tok-com"># پاک‌سازی بعد از تست (teardown)</span></code></pre>
+      </div>
+      <div class="code">
+        <div class="code-head"><div class="dots"><i></i><i></i><i></i></div><span class="lbl">test_database.py</span>
+          <button class="copy-btn">کپی</button></div>
+<pre><code><span class="tok-kw">def</span> <span class="tok-fn">test_new_user_starts_with_zero_requests</span>(temp_db):
+    <span class="tok-com"># فیکسچر «temp_db» خودکار تزریق می‌شود</span>
+    usage = temp_db.<span class="tok-fn">get_usage</span>(user_id=<span class="tok-num">123</span>)
+    <span class="tok-kw">assert</span> usage[<span class="tok-str">"requests"</span>] == <span class="tok-num">0</span>
+
+<span class="tok-kw">def</span> <span class="tok-fn">test_window_creation_is_capped_at_five</span>(temp_db):
+    <span class="tok-kw">for</span> _ <span class="tok-kw">in</span> range(<span class="tok-num">10</span>):
+        temp_db.<span class="tok-fn">create_window</span>(user_id=<span class="tok-num">123</span>)
+    <span class="tok-kw">assert</span> len(temp_db.<span class="tok-fn">list_windows</span>(<span class="tok-num">123</span>)) == <span class="tok-num">5</span></code></pre>
+      </div>
+      <div class="callout tip"><span class="ci">✅</span>
+        <div><b>هر تست، دنیای خودش را دارد.</b> چون هر تست یک <code class="inl">temp_db</code> تازه می‌گیرد،
+        تست‌ها روی هم اثر نمی‌گذارند و ترتیبِ اجرا مهم نیست — یکی از ویژگی‌های کلیدی تستِ خوب (بخش I در FIRST).</div>
+      </div>
+
+      <!-- پارامتری -->
+      <h3 id="param">پارامتری‌سازی (Parametrize) — یک تست، ده‌ها حالت</h3>
+      <p>وقتی می‌خواهی یک منطق را با ورودی‌های مختلف بسنجی، لازم نیست ده تابع بنویسی.
+      با <code class="inl">@pytest.mark.parametrize</code> یک تست می‌نویسی و ده‌ها حالت می‌سازی.
+      این بهترین راه برای رسیدن به تعداد تستِ بالا با کدِ کم است.</p>
+      <div class="code">
+        <div class="code-head"><div class="dots"><i></i><i></i><i></i></div><span class="lbl">test_limits.py</span>
+          <button class="copy-btn">کپی</button></div>
+<pre><code><span class="tok-dec">@pytest.mark.parametrize</span>(<span class="tok-str">"tier, expected_requests"</span>, [
+    (<span class="tok-str">"free"</span>, <span class="tok-num">25</span>),
+    (<span class="tok-str">"paid"</span>, <span class="tok-num">760</span>),
+])
+<span class="tok-kw">def</span> <span class="tok-fn">test_request_limit_per_tier</span>(tier, expected_requests):
+    <span class="tok-kw">assert</span> <span class="tok-fn">request_limit</span>(tier) == expected_requests
+
+<span class="tok-com"># تستِ مرزها: درست زیر، دقیقاً روی، و درست بالای حد مجاز</span>
+<span class="tok-dec">@pytest.mark.parametrize</span>(<span class="tok-str">"count, blocked"</span>, [
+    (<span class="tok-num">24</span>, <span class="tok-kw">False</span>),   <span class="tok-com"># زیر حد → آزاد</span>
+    (<span class="tok-num">25</span>, <span class="tok-kw">False</span>),   <span class="tok-com"># دقیقاً روی حد → هنوز آزاد</span>
+    (<span class="tok-num">26</span>, <span class="tok-kw">True</span>),    <span class="tok-com"># بالای حد → مسدود</span>
+])
+<span class="tok-kw">def</span> <span class="tok-fn">test_free_tier_boundary</span>(count, blocked):
+    <span class="tok-kw">assert</span> <span class="tok-fn">is_blocked</span>(<span class="tok-str">"free"</span>, count) <span class="tok-kw">is</span> blocked</code></pre>
+      </div>
+      <div class="callout warn"><span class="ci">🎯</span>
+        <div><b>همیشه مرزها را تست کن!</b> بیشتر باگ‌ها دقیقاً سرِ مرزها اتفاق می‌افتند (off-by-one).
+        برای هر حد، سه حالت را بسنج: <b>درست زیر</b>، <b>دقیقاً روی</b>، و <b>درست بالای</b> آن.</div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════ فصل ۶ ═══════════════════════════ -->
+    <section id="mock">
+      <h2 class="sec"><span class="num">۶</span> Mock و ایزوله‌سازی — تست بدون دنیای واقعی</h2>
+      <p class="sec-lead">تست‌ها نباید به اینترنت، API واقعی، یا سرویس‌های بیرونی وابسته باشند.
+      اینجاست که «موک» (Mock) وارد می‌شود.</p>
+
+      <div class="lead-block">
+        <p><strong>Mock</strong> یعنی یک جایگزینِ جعلی برای وابستگی‌های بیرونی. مثلاً وقتی می‌خواهی
+        منطقِ fallback موتور OXYGPT را تست کنی، نمی‌خواهی واقعاً به Gemini وصل شوی
+        (کند است، پول خرج می‌کند، و نتیجه‌اش هر بار فرق می‌کند). به‌جایش یک موک می‌سازی که
+        <b>دقیقاً همان چیزی را برمی‌گرداند که تو تعیین می‌کنی</b> — یا حتی خطا شبیه‌سازی می‌کند.</p>
+      </div>
+
+      <h3>چرا موک ضروری است؟</h3>
+      <div class="cards">
+        <div class="card"><div class="ic">🚀</div><h4>سرعت</h4><p>بدون تماس شبکه، تست در چند میلی‌ثانیه اجرا می‌شود، نه چند ثانیه.</p></div>
+        <div class="card"><div class="ic">🎲</div><h4>قطعیت</h4><p>پاسخِ جعلی همیشه یکسان است؛ تست flaky (بی‌ثبات) نمی‌شود.</p></div>
+        <div class="card"><div class="ic">💸</div><h4>بدون هزینه</h4><p>هیچ فراخوانی API واقعی و پولی انجام نمی‌شود.</p></div>
+        <div class="card"><div class="ic">🧨</div><h4>شبیه‌سازی خطا</h4><p>می‌توانی خطای ۵۰۳ یا timeout را عمداً بسازی و رفتار بات را بسنجی.</p></div>
+      </div>
+
+      <div class="code">
+        <div class="code-head"><div class="dots"><i></i><i></i><i></i></div><span class="lbl">test_market_tool.py</span>
+          <button class="copy-btn">کپی</button></div>
+<pre><code><span class="tok-kw">from</span> unittest.mock <span class="tok-kw">import</span> patch, Mock
+
+<span class="tok-kw">def</span> <span class="tok-fn">test_market_data_uses_cache_on_second_call</span>():
+    <span class="tok-com"># Arrange — پاسخِ HTTP جعلی می‌سازیم؛ به شبکه واقعی وصل نمی‌شویم</span>
+    fake_response = <span class="tok-fn">Mock</span>()
+    fake_response.json.return_value = {<span class="tok-str">"data"</span>: [...]}
+
+    <span class="tok-kw">with</span> <span class="tok-fn">patch</span>(<span class="tok-str">"tools.requests.get"</span>, return_value=fake_response) <span class="tok-kw">as</span> mock_get:
+        <span class="tok-com"># Act — دو بار صدا می‌زنیم</span>
+        <span class="tok-fn">get_market_data</span>(<span class="tok-str">"EURUSD"</span>, <span class="tok-str">"1h"</span>)
+        <span class="tok-fn">get_market_data</span>(<span class="tok-str">"EURUSD"</span>, <span class="tok-str">"1h"</span>)
+
+    <span class="tok-com"># Assert — بار دوم باید از کش بیاید، پس فقط یک تماس شبکه</span>
+    <span class="tok-kw">assert</span> mock_get.call_count == <span class="tok-num">1</span></code></pre>
+      </div>
+
+      <div class="callout"><span class="ci">🧩</span>
+        <div><b>انواع جایگزین‌های تست (Test Doubles):</b>
+        <p><b>Mock</b>: رفتار جعلی + امکان بررسیِ اینکه چطور صدا زده شد.
+        <b>Stub</b>: فقط یک مقدارِ ثابت برمی‌گرداند.
+        <b>Fake</b>: پیاده‌سازیِ سبک و واقعی (مثل دیتابیسِ درون‌حافظه‌ای).
+        در پایتون معمولاً همه را با <code class="inl">unittest.mock</code> می‌سازیم.</p></div>
+      </div>
+
+      <!-- async -->
+      <h3 id="async">تست کد ناهمگام (async)</h3>
+      <p>OXYGPT کاملاً async است (بر پایه <code class="inl">asyncio</code>). برای تست توابعِ
+      <code class="inl">async</code> از افزونه‌ی <b>pytest-asyncio</b> و برای شبیه‌سازیِ فراخوانی‌هایِ
+      awaitشونده از <code class="inl">AsyncMock</code> استفاده می‌کنیم.</p>
+      <div class="code">
+        <div class="code-head"><div class="dots"><i></i><i></i><i></i></div><span class="lbl">test_provider_fallback.py</span>
+          <button class="copy-btn">کپی</button></div>
+<pre><code><span class="tok-kw">import</span> pytest
+<span class="tok-kw">from</span> unittest.mock <span class="tok-kw">import</span> AsyncMock
+
+<span class="tok-dec">@pytest.mark.asyncio</span>
+<span class="tok-kw">async def</span> <span class="tok-fn">test_falls_back_to_openai_on_gemini_timeout</span>():
+    <span class="tok-com"># Arrange — Gemini با timeout خطا می‌دهد، OpenAI موفق است</span>
+    gemini = <span class="tok-fn">AsyncMock</span>(side_effect=<span class="tok-fn">TimeoutError</span>())
+    openai = <span class="tok-fn">AsyncMock</span>(return_value=<span class="tok-str">"پاسخ از OpenAI"</span>)
+    engine = <span class="tok-fn">Engine</span>(primary=gemini, fallback=openai)
+
+    <span class="tok-com"># Act — یک بار await می‌کنیم</span>
+    result = <span class="tok-kw">await</span> engine.<span class="tok-fn">generate</span>(<span class="tok-str">"سلام"</span>)
+
+    <span class="tok-com"># Assert — باید به fallback سوییچ کرده باشد</span>
+    <span class="tok-kw">assert</span> result == <span class="tok-str">"پاسخ از OpenAI"</span>
+    openai.<span class="tok-fn">assert_awaited_once</span>()</code></pre>
+      </div>
+      <div class="callout warn"><span class="ci">⏱️</span>
+        <div><b>هرگز با زمانِ واقعی صبر نکن!</b> برای تستِ منطقِ «بازیابی ۳۰ دقیقه‌ای» ماژول ۵۰۳،
+        <code class="inl">asyncio.sleep</code> را موک کن یا زمان را فریز کن — وگرنه تستِ تو ۳۰ دقیقه طول می‌کشد!</div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════ فصل ۷ ═══════════════════════════ -->
+    <section id="good">
+      <h2 class="sec"><span class="num">۷</span> ویژگی‌های یک تستِ خوب: اصل FIRST</h2>
+      <p class="sec-lead">هر تستی خوب نیست. تست‌های خوب پنج ویژگی دارند که با سرواژه‌ی <b>FIRST</b> شناخته می‌شوند.</p>
+
+      <div class="first-grid">
+        <div class="first-item"><div class="letter">F</div><b>Fast — سریع</b><span>باید در میلی‌ثانیه اجرا شود تا مدام اجرایش کنی</span></div>
+        <div class="first-item"><div class="letter">I</div><b>Isolated — مستقل</b><span>به تست دیگر یا ترتیب اجرا وابسته نباشد</span></div>
+        <div class="first-item"><div class="letter">R</div><b>Repeatable — تکرارپذیر</b><span>هر بار همان نتیجه؛ نه flaky</span></div>
+        <div class="first-item"><div class="letter">S</div><b>Self-validating — خودسنج</b><span>خودش سبز/قرمز می‌گوید؛ بررسی دستی لازم نیست</span></div>
+        <div class="first-item"><div class="letter">T</div><b>Timely — به‌موقع</b><span>کنارِ کد (یا قبلش، در TDD) نوشته شود</span></div>
+      </div>
+
+      <h3>چند قانون طلایی دیگر</h3>
+      <ul>
+        <li><b>یک تست، یک رفتار.</b> اگر تستی چند چیز را می‌سنجد، بشکنش به چند تست.</li>
+        <li><b>نامِ تست = مشخصات.</b> نامِ تست باید بدون خواندنِ بدنه بگوید چه رفتاری را می‌سنجد؛
+          مثل <code class="inl">test_free_tier_blocks_after_25_requests</code>.</li>
+        <li><b>تست را ساده نگه دار.</b> در تست از منطقِ پیچیده (حلقه، شرط تودرتو) پرهیز کن؛
+          تستِ پیچیده خودش باگ می‌گیرد.</li>
+        <li><b>تکرار در تست اشکالی ندارد.</b> خوانایی مهم‌تر از DRYبودنِ افراطی است.</li>
+        <li><b>وقتی باگ پیدا شد، اول یک تستِ قرمز بنویس</b> که آن باگ را بازتولید کند، بعد رفعش کن.
+          این‌طور مطمئن می‌شوی باگ دیگر برنمی‌گردد (regression test).</li>
+      </ul>
+
+      <div class="callout err"><span class="ci">🚫</span>
+        <div><b>ضدالگوهایی که باید از آن‌ها دوری کنی:</b>
+        <p>تستی که هیچ‌وقت قرمز نمی‌شود · تستی که به اینترنت وصل می‌شود · تستی که به تستِ قبلی وابسته است ·
+        تستی که چند رفتار را قاطی می‌کند · تستی که فقط برای بالا بردنِ عددِ «پوشش» نوشته شده و چیز معناداری نمی‌سنجد.</p></div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════ فصل ۸ ═══════════════════════════ -->
+    <section id="oxygpt">
+      <h2 class="sec"><span class="num">۸</span> تست‌نویسی برای OXYGPT در عمل</h2>
+      <p class="sec-lead">حالا همه‌چیز را کنار هم بگذاریم و ببینیم برای پروژه‌ی واقعیِ OXYGPT چه چیزهایی را و چطور تست می‌کنیم.</p>
+
+      <p>OXYGPT بخش‌های متنوعی دارد: موتور تولید، لایه‌ی دیتابیس، ابزارها، مدیریت خطای ۵۰۳،
+      و دو ماژول اختیاری. برای هر کدام دسته‌ی متفاوتی از تست معنا دارد:</p>
+
+      <div class="acc-wrap">
+        <details class="acc" open><summary>🗄️ لایه دیتابیس (database.py) — تستِ واحد</summary>
+          <div class="acc-body">
+            <p>با یک دیتابیس موقت (فیکسچرِ <code class="inl">temp_db</code>) این‌ها را می‌سنجیم:
+            ساخت پنجره و سقفِ ۵تایی، محدودیتِ ۴۰ پیامِ تاریخچه، شمارنده‌های مصرف،
+            بلاک/آنبلاک، قفل کانال‌های اجباری، و وضعیتِ ۵۰۳ (downgrade/restore).</p>
+          </div>
+        </details>
+        <details class="acc"><summary>🧠 موتور تولید (api_http.py) — تستِ یکپارچگی با موک</summary>
+          <div class="acc-body">
+            <p>ارائه‌دهنده‌ها را موک می‌کنیم و می‌سنجیم: چرخشِ round-robin کلیدها،
+            سوییچِ fallback روی خطای قابل‌تکرار، اینکه خطای احراز هویت <b>هرگز</b> fallback را فعال نمی‌کند،
+            و آستانه‌ی خلاصه‌سازی (۵ پیام و ۱۵هزار توکن).</p>
+          </div>
+        </details>
+        <details class="acc"><summary>🛠️ ابزارها (tools.py) — تستِ واحد با موکِ شبکه</summary>
+          <div class="acc-body">
+            <p>نرمال‌سازی نماد، کش‌شدنِ داده بازار، هر ۸ سبکِ تولید تصویر، هر تمِ بوکلت HTML،
+            و پاک‌سازیِ HTML (حذف تگ‌های خطرناک مثل <code class="inl">script</code>). همه با موکِ HTTP/WebSocket.</p>
+          </div>
+        </details>
+        <details class="acc"><summary>🛡️ مدیریت ۵۰۳ (gemini_503_manager.py) — تستِ async با زمانِ فریزشده</summary>
+          <div class="acc-body">
+            <p>اولین ۵۰۳ فقط مدلِ جایگزین می‌دهد؛ دومین ۵۰۳ downgrade سراسری + نوتیفیکیشن + زمان‌بندیِ بازیابی را فعال می‌کند
+            (با موکِ <code class="inl">asyncio.sleep</code>). idempotent بودنِ singleton و بازیابیِ مدل‌ها هم سنجیده می‌شود.</p>
+          </div>
+        </details>
+        <details class="acc"><summary>📓📡 ماژول‌ها (trade_journal / channel_watcher) — تستِ واحد + یکپارچگی</summary>
+          <div class="acc-body">
+            <p>محاسبات آماری ژورنال (نرخ برد، profit factor) روی داده‌ی نمونه، آستانه‌های نوتیفیکیشن،
+            و در چنل‌واچر: تصمیمِ طبقه‌بندیِ اهمیت (با موکِ classifier)، حذفِ پیامِ تکراری، و مرزِ نگه‌داریِ ۹۰ روزه.</p>
+          </div>
+        </details>
+      </div>
+
+      <div class="callout tip"><span class="ci">🎁</span>
+        <div><b>پرامپت آماده برای تولید ۱۰۰ تا ۲۰۰ تست</b>
+        <p>در همین مخزن فایلِ <code class="inl">documentation/test-generation-prompt.md</code> را داری؛
+        یک پرامپت کامل و حرفه‌ای که به دستیارِ کد می‌دهی تا با رعایتِ همه‌ی همین اصول
+        (موک، ایزوله‌سازی، AAA، هرم تست، تستِ مرزها) بین ۱۰۰ تا ۲۰۰ تست برای پروژه بنویسد.</p></div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════ فصل ۹ ═══════════════════════════ -->
+    <section id="checklist">
+      <h2 class="sec"><span class="num">۹</span> چک‌لیست و جمع‌بندی</h2>
+      <p class="sec-lead">هر بار که تست می‌نویسی، این فهرست را مرور کن.</p>
+
+      <div class="lead-block">
+        <h4 style="margin-top:0">✅ چک‌لیست تستِ حرفه‌ای</h4>
+        <ul style="margin-bottom:0">
+          <li>آیا از الگوی <b>Arrange-Act-Assert</b> پیروی کردم؟</li>
+          <li>آیا هر تست فقط <b>یک رفتار</b> را می‌سنجد؟</li>
+          <li>آیا نامِ تست به‌تنهایی رفتار را توصیف می‌کند؟</li>
+          <li>آیا همه‌ی وابستگی‌های بیرونی (شبکه، API، دیتابیسِ واقعی) را <b>موک</b> کرده‌ام؟</li>
+          <li>آیا تست <b>مستقل</b> است و به ترتیبِ اجرا وابسته نیست؟</li>
+          <li>آیا <b>مرزها</b> را سنجیده‌ام (زیر/روی/بالای حد)؟</li>
+          <li>آیا برای کدِ async از <code class="inl">@pytest.mark.asyncio</code> و <code class="inl">AsyncMock</code> استفاده کردم؟</li>
+          <li>آیا تست‌ها <b>سریع</b> و بدون <code class="inl">sleep</code>ِ واقعی‌اند؟</li>
+          <li>آیا مرحله‌ی <b>قرمز</b> را دیدم تا مطمئن شوم تست واقعاً چیزی می‌سنجد؟</li>
+        </ul>
+      </div>
+
+      <h3>خلاصه‌ی مسیر یادگیری</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>مفهوم</th><th>در یک جمله</th></tr></thead>
+          <tbody>
+            <tr><td><b>تست</b></td><td>کدی که به‌طور خودکار رفتارِ کدِ دیگر را می‌سنجد.</td></tr>
+            <tr><td><b>هرم تست</b></td><td>بیشترِ تست‌ها واحد، کمترشان یکپارچگی، اندکی سرتاسری.</td></tr>
+            <tr><td><b>AAA</b></td><td>آماده‌سازی، اجرا، ادعا — اسکلتِ هر تست.</td></tr>
+            <tr><td><b>TDD</b></td><td>اول تست، بعد کد؛ در چرخه‌ی قرمز → سبز → بازآرایی.</td></tr>
+            <tr><td><b>pytest</b></td><td>فریم‌ورک استانداردِ تستِ پایتون.</td></tr>
+            <tr><td><b>Fixture</b></td><td>آماده‌سازیِ قابل‌استفاده مجدد بینِ تست‌ها.</td></tr>
+            <tr><td><b>Parametrize</b></td><td>یک تست، ده‌ها حالت ورودی.</td></tr>
+            <tr><td><b>Mock</b></td><td>جایگزینِ جعلی برای وابستگی‌های بیرونی.</td></tr>
+            <tr><td><b>FIRST</b></td><td>سریع، مستقل، تکرارپذیر، خودسنج، به‌موقع.</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout"><span class="ci">🚀</span>
+        <div><b>قدم بعدی:</b> فایل <code class="inl">documentation/test-generation-prompt.md</code> را بردار،
+        به دستیارِ کد بده، و اولین مجموعه‌ی تستِ واقعی OXYGPT را بساز. یادت باشد: قرمز، سبز، بازآرایی. 🔴🟢🟣</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<button id="toTop" title="بالا" aria-label="بازگشت به بالا">↑</button>
+
+<footer>
+  <div class="foot-sources">
+    <h4>📚 منابع معتبر (ترجمه و تلخیص‌شده در این راهنما)</h4>
+    <ul>
+      <li>Martin Fowler — <i>The Practical Test Pyramid</i> (هرم تست و ساختار AAA)</li>
+      <li>Kent Beck — <i>Test-Driven Development: By Example</i> (بنیان‌گذار TDD و چرخه قرمز/سبز/بازآرایی)</li>
+      <li>Codecademy — <i>TDD: Red, Green, Refactor</i></li>
+      <li>مستندات رسمی <i>pytest</i> و افزونه‌ی <i>pytest-asyncio</i> (فیکسچر، پارامتری‌سازی، تستِ async)</li>
+      <li>Semaphore / Automation Panda — <i>The Arrange-Act-Assert Pattern</i></li>
+      <li>اصل <i>FIRST</i> — از کتاب <i>Clean Code</i> اثر Robert C. Martin</li>
+    </ul>
+  </div>
+  <p>ساخته‌شده برای پروژه‌ی <b>OXYGPT</b> · راهنمای آموزشی تست‌نویسی و TDD · تمام محتوا به فارسی</p>
+</footer>
+
+<script>
+/* نوار پیشرفت خواندن */
+const progress=document.getElementById('progress');
+function updateProgress(){
+  const h=document.documentElement;
+  const scrolled=h.scrollTop/(h.scrollHeight-h.clientHeight)*100;
+  progress.style.width=scrolled+'%';
+  document.getElementById('toTop').classList.toggle('show',h.scrollTop>500);
+}
+window.addEventListener('scroll',updateProgress,{passive:true});
+
+/* تم روشن/تیره با حافظه */
+const themeBtn=document.getElementById('themeBtn');
+const root=document.documentElement;
+const saved=localStorage.getItem('theme');
+if(saved==='dark'){root.setAttribute('data-theme','dark');themeBtn.textContent='☀️';}
+themeBtn.addEventListener('click',()=>{
+  const dark=root.getAttribute('data-theme')==='dark';
+  if(dark){root.removeAttribute('data-theme');themeBtn.textContent='🌙';localStorage.setItem('theme','light');}
+  else{root.setAttribute('data-theme','dark');themeBtn.textContent='☀️';localStorage.setItem('theme','dark');}
+});
+
+/* منوی موبایل */
+const menuBtn=document.getElementById('menuBtn');
+const toc=document.getElementById('toc');
+const backdrop=document.getElementById('tocBackdrop');
+function toggleMenu(open){toc.classList.toggle('open',open);backdrop.classList.toggle('show',open);}
+menuBtn.addEventListener('click',()=>toggleMenu(!toc.classList.contains('open')));
+backdrop.addEventListener('click',()=>toggleMenu(false));
+
+/* اسکرول نرم + بستن منو در موبایل + هایلایت فعال */
+const links=[...document.querySelectorAll('nav.toc a')];
+links.forEach(a=>a.addEventListener('click',()=>{if(window.innerWidth<=960)toggleMenu(false);}));
+const sections=[...document.querySelectorAll('section[id]')];
+const spy=new IntersectionObserver((entries)=>{
+  entries.forEach(e=>{
+    if(e.isIntersecting){
+      links.forEach(l=>l.classList.remove('active'));
+      const active=links.find(l=>l.getAttribute('href')==='#'+e.target.id);
+      if(active)active.classList.add('active');
+    }
+  });
+},{rootMargin:'-20% 0px -70% 0px'});
+sections.forEach(s=>spy.observe(s));
+
+/* دکمه کپیِ کد */
+document.querySelectorAll('.copy-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    const code=btn.closest('.code').querySelector('pre').innerText;
+    navigator.clipboard.writeText(code).then(()=>{
+      const t=btn.textContent;btn.textContent='کپی شد ✓';
+      setTimeout(()=>btn.textContent=t,1400);
+    });
+  });
+});
+
+/* دکمه بالا */
+document.getElementById('toTop').addEventListener('click',()=>window.scrollTo({top:0,behavior:'smooth'}));
+updateProgress();
+</script>
+</body>
+</html>
