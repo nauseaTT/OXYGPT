@@ -48,9 +48,11 @@
 
 **Operate**
 - [Requirements](#requirements)
+- [Docker Deployment](#docker-deployment)
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Running the Bot](#running-the-bot)
+- [Testing](#testing)
 
 **Capabilities**
 - [Generative Engine](#generative-engine)
@@ -354,6 +356,118 @@ OXYGPT/
 - *(Optional)* A Telegram **user account** for the Channel Watcher module (first login prompts
   for a code and, if two-step verification is enabled, a password)
 
+For a containerised deployment (recommended for servers), the only host
+requirement is **Docker** with the **Compose** plugin — the image bundles
+Python 3.12, Telethon v2, and every other dependency. See
+[Docker Deployment](#docker-deployment).
+
+---
+
+## Docker Deployment
+
+The recommended way to run OXYGPT in production is with Docker. The image is
+fully self-contained, runs as a non-root user, and keeps **all** persistent
+state (Telegram session files + SQLite databases) on a single named volume so
+rebuilds never lose your login or data.
+
+### Option A — one-command installer
+
+From a fresh server, the installer sets up Docker (if missing), collects your
+credentials into `.env`, then builds and starts the stack:
+
+```bash
+# From a checkout of the repo:
+bash install.sh
+
+# …or fetch it first (replace <RAW_URL> with the raw install.sh URL):
+curl -fsSL <RAW_URL> -o install.sh && bash install.sh
+```
+
+The installer is idempotent: re-running it reuses an existing `.env` and
+rebuilds the running stack in place without touching the data volume.
+
+### Option B — Docker Compose (manual)
+
+```bash
+# 1. Configure your credentials
+cp .env.example .env
+#    Edit .env — at minimum set TELEGRAM_API_ID / _API_HASH / _BOT_TOKEN
+#    and one GEMINI_API_KEY_1.
+
+# 2. Build and start (detached). The first build compiles Telethon v2 from
+#    source, so it can take a few minutes.
+docker compose up -d --build
+
+# 3. Follow the logs
+docker compose logs -f
+```
+
+Common operations:
+
+| Task | Command |
+|------|---------|
+| Start (detached) | `docker compose up -d` |
+| Rebuild after `git pull` | `docker compose up -d --build` |
+| Stop | `docker compose stop` |
+| Stop & remove container | `docker compose down` |
+| Tail logs | `docker compose logs -f` |
+| Open a shell in the container | `docker compose exec oxygpt bash` |
+
+### Option C — plain `docker build` / `docker run`
+
+```bash
+docker build -t oxygpt:latest .
+docker run -d --name oxygpt --restart unless-stopped \
+    --env-file .env \
+    -v oxygpt-data:/data \
+    oxygpt:latest
+```
+
+### How persistence works
+
+All mutable state is redirected into `OXYGPT_DATA_DIR` (set to `/data` in the
+image), which the Compose file mounts as the named volume `oxygpt-data`:
+
+| File | Purpose |
+|------|---------|
+| `/data/bot.session` | Bot-account Telethon session |
+| `/data/channel_watcher_user.session` | Channel Watcher user session (optional module) |
+| `/data/bot_database.db` | Main bot database (windows, usage, settings) |
+| `/data/journal.db` | Trade Journal database |
+| `/data/channel_watcher.db` | Channel Watcher database |
+
+`OXYGPT_DATA_DIR` is **opt-in**: when it is unset (a plain `python telegram.py`
+checkout run) every path falls back to its historical location in the working
+directory, so bare-metal setups behave exactly as before.
+
+### The Telethon v2 build, solved
+
+Telethon v2 generates its Telegram type layer at **build** time, and that
+codegen imports `typing_extensions`. Because pip builds wheels in an *isolated*
+environment that omits `typing_extensions`, a naive install fails with:
+
+```
+ModuleNotFoundError: No module named 'typing_extensions'
+```
+
+The `Dockerfile` fixes this deterministically in its builder stage by
+pre-installing the build prerequisites and disabling build isolation:
+
+```dockerfile
+RUN pip install "typing_extensions>=4.12" setuptools wheel
+RUN pip install --no-build-isolation \
+        "telethon @ git+https://github.com/LonamiWebs/Telethon.git@v2#subdirectory=client"
+```
+
+So the container build "just works" with no manual intervention.
+
+### First-run login (Channel Watcher)
+
+The bot account logs in non-interactively with its token. If you enable the
+optional Channel Watcher (a **user** account), the very first start may need a
+login code sent to that account — watch `docker compose logs -f`. For fully
+headless 2FA, set `CW_USER_PHONE` and `CW_USER_PASSWORD` in `.env`.
+
 ---
 
 ## Installation
@@ -472,6 +586,36 @@ On start, the bot connects to Telegram, registers every handler, loads the optio
    code and, if 2FA is on, a password (set `CW_USER_PASSWORD` for headless runs). The session is
    then cached.
 4. Logs are written to `logs/telegram.log`, `logs/api_http.log`, and `logs/tools.log`.
+
+---
+
+## Testing
+
+The project ships with a dedicated, self-contained test suite under `tests/`
+(**570+ tests**) covering the utilities, databases, the generative-engine
+helpers, the Trade Journal and Channel Watcher persistence layers, and — most
+importantly — the Telethon v1→v2 compatibility shim.
+
+Every test runs entirely offline against throw-away temporary SQLite files, so
+no Telegram credentials, network access, or external services are required.
+
+```bash
+# Install the test dependencies (also pulls the runtime requirements)
+pip install -r requirements-dev.txt
+
+# Run the whole suite
+pytest
+
+# Quiet summary
+pytest -q
+
+# With coverage
+pytest --cov=. --cov-report=term-missing
+```
+
+`pytest.ini` enables `asyncio_mode=auto`, so the async database and shim tests
+need no per-test decorators. The suite is a fast (< 10 s) regression guard —
+run it before every commit and after dependency bumps.
 
 ---
 
@@ -806,8 +950,29 @@ pip install "git+https://github.com/LonamiWebs/Telethon.git@v2#subdirectory=clie
 python -c "import telethon; print(telethon.__version__)"   # expect 2.0.0a0
 ```
 
-If the wheel build fails with `No module named 'typing_extensions'`, install
-`typing_extensions setuptools wheel` first, then retry.
+If the wheel build fails with `No module named 'typing_extensions'`, it is
+because pip builds the wheel in an isolated environment that omits it. Install
+the build prerequisites and disable build isolation:
+
+```bash
+pip install "typing_extensions>=4.12" setuptools wheel
+pip install --no-build-isolation \
+    "telethon @ git+https://github.com/LonamiWebs/Telethon.git@v2#subdirectory=client"
+```
+
+The Docker image applies this fix automatically — see
+[Docker Deployment](#docker-deployment).
+</details>
+
+<details>
+<summary><b>Docker: session/data reset after a rebuild</b></summary>
+
+Persistent state lives on the named volume `oxygpt-data` (mounted at `/data`).
+As long as you deploy with the provided `docker-compose.yml` (or pass
+`-v oxygpt-data:/data` to `docker run`), rebuilding the image keeps your login
+session and databases. If you started the container **without** the volume, its
+state was written to the container's ephemeral layer and is lost on recreate —
+redeploy with the volume attached.
 </details>
 
 <details>

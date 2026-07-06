@@ -8,7 +8,20 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
-_DB_PATH = os.path.join(os.path.dirname(__file__), "journal.db")
+def _default_db_path() -> str:
+    """Resolve the journal DB path, honouring ``OXYGPT_DATA_DIR`` if set."""
+    try:
+        import sys
+        _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if _root not in sys.path:
+            sys.path.insert(0, _root)
+        from paths import data_path
+        return data_path("journal.db")
+    except Exception:
+        return os.path.join(os.path.dirname(__file__), "journal.db")
+
+
+_DB_PATH = _default_db_path()
 
 _db: Optional[aiosqlite.Connection] = None
 _db_lock = asyncio.Lock()
@@ -227,6 +240,30 @@ async def init_db() -> None:
             logger.info("Migrated template_fields table: added 'choice' to CHECK constraint")
     except Exception as e:
         logger.warning(f"Could not migrate template_fields constraint: {e}")
+
+    # Deduplicate user_channels so the UNIQUE index below can be created even
+    # on databases that already accumulated duplicate rows (the old
+    # ``INSERT OR IGNORE`` was a no-op without a matching constraint).
+    try:
+        await conn.execute(
+            """DELETE FROM user_channels
+               WHERE id NOT IN (
+                   SELECT MIN(id) FROM user_channels
+                   GROUP BY user_id, channel_id
+               )"""
+        )
+    except Exception as e:
+        logger.warning(f"Could not deduplicate user_channels: {e}")
+
+    # Enforce one row per (user_id, channel_id) so ``set_user_channel`` really
+    # is idempotent via ``INSERT OR IGNORE``.
+    try:
+        await conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_user_channels_user_channel "
+            "ON user_channels (user_id, channel_id)"
+        )
+    except Exception as e:
+        logger.warning(f"Could not create user_channels unique index: {e}")
 
     await conn.commit()
     logger.info("Trade Journal database initialized / migrated")

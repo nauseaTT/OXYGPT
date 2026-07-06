@@ -25,7 +25,20 @@ except ImportError:  # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
-_DB_PATH = os.path.join(os.path.dirname(__file__), "channel_watcher.db")
+def _default_db_path() -> str:
+    """Resolve the channel-watcher DB path, honouring ``OXYGPT_DATA_DIR``."""
+    try:
+        import sys
+        _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if _root not in sys.path:
+            sys.path.insert(0, _root)
+        from paths import data_path
+        return data_path("channel_watcher.db")
+    except Exception:
+        return os.path.join(os.path.dirname(__file__), "channel_watcher.db")
+
+
+_DB_PATH = _default_db_path()
 
 _db: Optional[aiosqlite.Connection] = None
 _db_lock = asyncio.Lock()

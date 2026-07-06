@@ -456,11 +456,70 @@ def _msg_message_alias(self):
     return self.text
 
 
+class _BytesSink:
+    """Minimal in-memory ``OutFileLike`` that accumulates written chunks.
+
+    v2's ``Client.download`` writes into a file path or a file-like object with
+    a ``write`` method (which may be sync or async). To emulate v1's
+    ``download_media(bytes)`` -> ``bytes`` we hand it one of these sinks and
+    return the joined buffer.
+    """
+
+    __slots__ = ("_chunks",)
+
+    def __init__(self) -> None:
+        self._chunks: list[bytes] = []
+
+    def write(self, data: bytes) -> None:
+        self._chunks.append(bytes(data))
+
+    def getvalue(self) -> bytes:
+        return b"".join(self._chunks)
+
+
+async def _msg_download_media(self, file: Any = None, *, thumb: Any = None, **_ignored: Any):
+    """v2: v1 `message.download_media(file)` -> `client.download(media, out)`.
+
+    v2 removed ``Message.download_media`` in favour of
+    ``Client.download(media, file)`` (where ``media`` is a v2 ``File`` such as
+    ``message.file``/``message.photo``/``message.video`` and ``file`` is a path
+    or file-like object, and the call returns ``None``).
+
+    This shim restores the v1 call the app still uses:
+
+      * ``download_media(bytes)`` — the app's only form — downloads into an
+        in-memory buffer and returns the raw ``bytes`` (or ``None`` when the
+        message carries no downloadable media).
+      * ``download_media("/path")`` / a file-like object — downloads there and
+        returns the given target (v1 returned the path).
+
+    (see migration guide: "download_media moved to Client.download")
+    """
+    media = getattr(self, "file", None) or getattr(self, "photo", None) or getattr(self, "video", None)
+    if media is None:
+        return None
+    client = getattr(self, "_client", None)
+    if client is None:  # pragma: no cover - defensive; every real event has one
+        raise RuntimeError("message has no attached client for download")
+
+    # v1 `download_media(bytes)`: return the bytes in-memory.
+    if file is bytes or file is None:
+        sink = _BytesSink()
+        await client.download(media, sink)
+        return sink.getvalue()
+
+    # A path or a caller-supplied file-like object: download there, return target.
+    await client.download(media, file)
+    return file
+
+
 # v1 accessors re-added so the ~17 is_reply / get_reply_message / reply_to sites
 # and the `.message` reads keep working unchanged.
 _Message.is_reply = property(_msg_is_reply)                # type: ignore[attr-defined]
 _Message.reply_to_msg_id = property(_msg_reply_to_msg_id)  # type: ignore[attr-defined]
 _Message.get_reply_message = _msg_get_reply_message        # type: ignore[attr-defined]
+if not hasattr(_Message, "download_media"):
+    _Message.download_media = _msg_download_media          # type: ignore[attr-defined]
 # NOTE: `.message` as a text alias is only added if v2 doesn't already define it
 # (it does not, since v2 renamed it to `.text`).
 if not hasattr(_Message, "message"):
@@ -611,10 +670,61 @@ async def _client_delete_messages_wrapper(self, chat: Any, message_ids: Any = No
     return await _orig_client_delete_messages(self, peer, message_ids, **kw)
 
 
+_orig_client_get_messages = _V2Client.get_messages
+
+
+async def _get_messages_by_ids(client: Any, peer: Any, ids: Any):
+    """Fetch specific messages by id, returning a single Message or a list.
+
+    Mirrors v1 ``get_messages(chat, ids=...)`` semantics: a scalar id yields a
+    single ``Message`` (or ``None``); a list of ids yields a list.
+    """
+    scalar = isinstance(ids, int)
+    id_list = [ids] if scalar else list(ids)
+    results = []
+    async for msg in client.get_messages_with_ids(peer, id_list):
+        results.append(msg)
+    if scalar:
+        return results[0] if results else None
+    return results
+
+
+def _client_get_messages_wrapper(self, chat: Any, limit: Any = None, *,
+                                 ids: Any = None, **kw: Any):
+    """v2-compat wrapper for `Client.get_messages`.
+
+    v2 split the v1 overloaded ``get_messages`` into two methods:
+
+      * ``get_messages(chat, limit, *, offset_id=, offset_date=)`` — history
+        pagination, returns an async-iterable ``AsyncList[Message]``.
+      * ``get_messages_with_ids(chat, message_ids: list[int])`` — fetch specific
+        messages by id.
+
+    v1 code fetched a single message with ``get_messages(chat, ids=msg_id)`` and
+    ``await``-ed it, while history/pagination call sites iterate the result with
+    ``async for``. To keep BOTH shapes working this wrapper is deliberately a
+    *plain* function:
+
+      * with ``ids`` -> returns a coroutine (awaitable) resolving to a single
+        ``Message``/``None`` (scalar id) or a list (id list);
+      * without ``ids`` -> returns v2's native ``AsyncList`` unchanged, so the
+        channel-watcher fetcher's ``async for msg in get_messages(peer, 1)``
+        keeps working.
+    (see migration guide: "get_messages split into get_messages / _with_ids")
+    """
+    peer = _coerce_peer(chat)
+    if ids is not None:
+        return _get_messages_by_ids(self, peer, ids)
+    if limit is not None:
+        return _orig_client_get_messages(self, peer, limit, **kw)
+    return _orig_client_get_messages(self, peer, **kw)
+
+
 _V2Client.send_message = _client_send_message_wrapper  # type: ignore[assignment]
 _V2Client.edit_message = _client_edit_message_wrapper  # type: ignore[assignment]
 _V2Client.send_file = _client_send_file_wrapper        # type: ignore[assignment]
 _V2Client.delete_messages = _client_delete_messages_wrapper  # type: ignore[assignment]
+_V2Client.get_messages = _client_get_messages_wrapper  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,52 @@
+# Keep the build context (and final image) lean and reproducible.
+
+# Version control & CI
+.git
+.gitignore
+.github
+
+# Python caches / build artefacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
+build/
+dist/
+
+# Tests are not needed inside the runtime image
+tests/
+pytest.ini
+requirements-dev.txt
+mypy.ini
+
+# Local persistent state — must NEVER be baked into the image; it lives on the
+# /data volume at runtime instead.
+*.session
+*.session-journal
+*.db
+*.db-shm
+*.db-wal
+bot_database.db
+channel_watcher.db
+trade_journal/journal.db
+logs/
+*.log
+telegramAI.log
+market_data_cache.json
+
+# Secrets & local env
+.env
+
+# Generated media / scratch
+*.png
+path/
+docs/
+
+# Editor / OS noise
+.aider*
+.vscode/
+.idea/
+.DS_Store

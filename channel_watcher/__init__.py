@@ -316,7 +316,8 @@ async def register_handlers(client: TelegramClient, bot_instance: Any, user_clie
             phone = os.environ.get("CW_USER_PHONE", "")
             if not phone:
                 raise ValueError("CW_USER_PHONE must be set in .env")
-            _user_client = TelegramClient("channel_watcher_user", api_id, api_hash)
+            from paths import session_name
+            _user_client = TelegramClient(session_name("channel_watcher_user"), api_id, api_hash)
             # v2: `client.start(phone=, code_callback=)` was removed. The
             #     user-account login is now an explicit flow:
             #       connect() -> is_authorized()?  -> request_login_code(phone)
