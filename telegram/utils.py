@@ -16,7 +16,10 @@ def clean_number_string(text: str) -> str:
     """Converts Persian/Arabic digits to English digits and removes non-numeric clutter except minus sign."""
     text_str = str(text)
     persian_digits = "۰۱۲۳۴۵۶۷۸۹"
-    arabic_digits = "٠١٢٣٤٥٦۷٨٩"
+    # NOTE: the 7th character MUST be the Arabic-Indic seven ٧ (U+0667), not the
+    # Persian seven ۷ (U+06F7). A previous copy used U+06F7 here, which left a
+    # real Arabic ٧ untranslated (e.g. "١٢٣٤٥٦٧٨٩٠" -> "123456٧890").
+    arabic_digits = "٠١٢٣٤٥٦٧٨٩"
     english_digits = "0123456789"
     translation_table = str.maketrans(persian_digits + arabic_digits, english_digits + english_digits)
     translated = text_str.translate(translation_table)

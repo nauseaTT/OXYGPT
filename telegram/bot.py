@@ -104,8 +104,9 @@ class TelegramBot:
         # handlers (`pending_message_handler` + `inline_handler`) must both run
         # on the same message, so we opt into running all matching handlers.
         # (see migration guide: "Behaviour changes in events")
+        from paths import session_name
         self.bot: TelegramClient = TelegramClient(
-            'bot', self.api_id, self.api_hash, check_all_handlers=True
+            session_name('bot'), self.api_id, self.api_hash, check_all_handlers=True
         )
 
         self.sessions: Dict[int, AI_Service] = {}

@@ -11,7 +11,7 @@ Provides the DatabaseManager class that handles all persistent storage:
 import sqlite3
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from contextlib import contextmanager
 from typing import List, Dict, Any, Optional, Generator
 
@@ -20,13 +20,20 @@ class DatabaseManager:
     Manages SQLite database operations for persisting user sessions, 
     pending states, conversation windows, and usage limits.
     """
-    def __init__(self, db_path: str = "bot_database.db") -> None:
+    def __init__(self, db_path: Optional[str] = None) -> None:
         """
         Initializes the database manager and runs migrations.
 
         Args:
-            db_path (str): Path to the SQLite database file.
+            db_path (str): Path to the SQLite database file. When omitted the
+                path is resolved via ``paths.data_path`` so that a configured
+                ``OXYGPT_DATA_DIR`` (e.g. a container volume) is honoured while
+                the historical default of ``bot_database.db`` in the working
+                directory is preserved when it is unset.
         """
+        if db_path is None:
+            from paths import data_path
+            db_path = data_path("bot_database.db")
         self.db_path: str = db_path
         self._init_db()
 
@@ -1149,13 +1156,13 @@ class DatabaseManager:
                                 "mentors_model": "gemini-3.5-flash"
                             }
         """
-        from datetime import datetime
-        
+        # NOTE: use timezone-aware UTC (datetime.utcnow() is deprecated in
+        # Python 3.12+ and returns a naive datetime).
         with self._get_conn() as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO gemini_503_state (id, is_downgraded, downgrade_time, recovery_scheduled, original_models)
                 VALUES (1, 1, ?, 1, ?)
-            """, (datetime.utcnow().isoformat(), json.dumps(original_models)))
+            """, (datetime.now(timezone.utc).isoformat(), json.dumps(original_models)))
             conn.commit()
 
     def clear_503_downgrade(self) -> Dict[str, str]:

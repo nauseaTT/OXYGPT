@@ -1,18 +1,50 @@
+# ─────────────────────────────────────────────────────────────────────────
+# OXYGPT runtime dependencies
+# ─────────────────────────────────────────────────────────────────────────
+#
 # Telethon v2 (2.0.0a0). v2 is a full rewrite and is not yet published as a
 # stable release on PyPI, so it is installed from the official `v2` branch.
-# The pin below documents the exact target; install with:
-#   pip install "git+https://github.com/LonamiWebs/Telethon.git@v2#subdirectory=client"
-# (offline/dev environments may `pip install ./telethon-src/client`).
+#
+# ⚠️  BUILD NOTE (why the plain `pip install` of the line below fails):
+# Telethon v2's build backend generates its TL types at *build* time, and that
+# codegen imports `typing_extensions`. pip builds wheels in an ISOLATED
+# environment that does NOT include `typing_extensions`, so the build crashes
+# with `ModuleNotFoundError: No module named 'typing_extensions'`.
+#
+# The fix (applied by the Dockerfile and install.sh) is to pre-install the
+# build prerequisites and disable build isolation:
+#
+#     pip install "typing_extensions>=4.12" setuptools wheel
+#     pip install --no-build-isolation \
+#         "telethon @ git+https://github.com/LonamiWebs/Telethon.git@v2#subdirectory=client"
+#
 # When Telethon 2.0.0 is published to PyPI, replace this with:  telethon>=2,<3
 telethon @ git+https://github.com/LonamiWebs/Telethon.git@v2#subdirectory=client
-google-generativeai
+
+# ── AI providers ──
+# The bot uses the NEW unified Google GenAI SDK (`from google import genai`,
+# `genai.Client(...)`), which is the `google-genai` package — NOT the legacy
+# `google-generativeai` package (`import google.generativeai as genai`).
+google-genai
 openai
+
+# ── Data / charts (charts are disabled by default, see chart_generator.py) ──
 pandas
 matplotlib
 mplfinance
+
+# ── HTTP / async IO ──
 requests
 httpx
-python-dotenv
-aiosqlite
 aiohttp
 aiofiles
+aiosqlite
+
+# ── Imaging (Pillow provides `from PIL import Image`, used by api_http.py) ──
+Pillow
+
+# ── Config ──
+python-dotenv
+
+# ── Build prerequisite for Telethon v2 (see build note above) ──
+typing_extensions>=4.12
