@@ -1,7 +1,9 @@
 import logging
 from typing import Any
 
-from telethon.tl.custom import Button
+# v2: v1 `telethon.tl.custom.Button` factory -> compat `Button` shim, which
+# builds v2 `telethon.types.buttons.*` instances under the hood.
+from telethon_compat import Button
 
 from ..database import get_trade_stats, get_detailed_analysis
 from ..services.trade_service import format_glass_stats_text

@@ -1,7 +1,8 @@
 import json
 import random
 from typing import Any, TYPE_CHECKING
-from telethon import Button
+# v2: Button now comes from the compat facade (v2 button classes). See telethon_compat.py.
+from telethon_compat import Button
 
 if TYPE_CHECKING:
     from ..bot import TelegramBot
@@ -377,7 +378,7 @@ async def back_to_main_cb(self: "TelegramBot", event: Any) -> None:
 async def _show_skill_selection_direct(event: Any, uid: int, active_skill: str = "default") -> Any:
     """Show skill selection buttons directly in the message context. Returns the message object."""
     from skills import SKILLS, get_skill
-    from telethon import Button
+    from telethon_compat import Button  # v2: compat Button facade
     
     buttons = []
     row = []

@@ -1,6 +1,16 @@
 # OXYGPT — Telegram AI Assistant
 
-A production-grade Telegram bot powered by Google Gemini and OpenAI-compatible APIs, featuring multi-mentor trading personas, tool-calling (web search, image generation, market data, HTML booklets), multi-window conversations, trade journaling, and AI-powered channel monitoring.
+A production-grade Telegram bot powered by Google Gemini and OpenAI-compatible APIs, featuring multi-mentor trading personas, tool-calling (web search, image generation, market data, HTML booklets), multi-window conversations, trade journaling, and smart-classification channel monitoring.
+
+> **Built on Telethon v2 (`2.0.0a0`).** This project targets the full Telethon
+> v2 rewrite, not the PyPI-published v1 line. v2 is a substantial API change
+> (explicit connect/login, `PeerRef` entities, separated events & filters,
+> single-file `send_file`, per-call parse-mode, and more). All Telethon symbols
+> are imported through the in-repo compatibility layer `telethon_compat.py`,
+> which re-exports v2 under familiar names and smooths over the differences.
+> See [Telethon v2 Notes](#telethon-v2-notes) and `MIGRATION_NOTES.md` for the
+> full story, and note the **[session re-login requirement](#telethon-v2-notes)**
+> the first time you run on v2.
 
 ---
 
@@ -25,6 +35,7 @@ A production-grade Telegram bot powered by Google Gemini and OpenAI-compatible A
 - [Conversation Summarization](#conversation-summarization)
 - [Admin Panel](#admin-panel)
 - [Optional Modules](#optional-modules)
+- [Telethon v2 Notes](#telethon-v2-notes)
 - [Internal Workflow](#internal-workflow)
 - [Important Implementation Notes](#important-implementation-notes)
 - [Limitations](#limitations)
@@ -159,8 +170,10 @@ Background tasks triggered:
 ## Directory Structure
 
 ```
-AI_TelegramBot/
+OXYGPT/
 ├── telegram.py                 # Entry point — creates TelegramBot and starts the client
+├── telethon_compat.py          # Telethon v1→v2 compatibility layer (import Telethon from here)
+├── MIGRATION_NOTES.md          # Detailed Telethon v1→v2 migration notes
 ├── api_http.py                 # AI service layer: Gemini/OpenAI providers, tool calling,
 │                               # summarization, client pools, service manager
 ├── tools.py                    # Tool implementations: market data (FCSAPI), image generation
@@ -236,13 +249,18 @@ AI_TelegramBot/
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.9+ (3.11+ recommended)
+- **Telethon v2 (`2.0.0a0`)** — installed from the official `v2` branch, **not**
+  from PyPI (see [Installation](#installation)). The published `telethon`
+  package on PyPI is the v1 line and is **not** compatible with this codebase.
 - A Telegram API ID and hash (from [my.telegram.org](https://my.telegram.org))
 - A Telegram bot token (from [@BotFather](https://t.me/BotFather))
 - At least one Google Gemini API key
 - (Optional) OpenAI-compatible API keys for fallback/secondary provider
 - (Optional) FCSAPI token for market data
-- (Optional) A Telegram user account for Channel Watcher module
+- (Optional) A Telegram user account for the Channel Watcher module — under v2
+  the first login prompts for a login code and, if the account has two-step
+  verification enabled, a password (see [Configuration](#configuration))
 
 ---
 
@@ -251,19 +269,41 @@ AI_TelegramBot/
 ```bash
 # Clone the repository
 git clone <repo-url>
-cd AI_TelegramBot
+cd OXYGPT
 
 # Create and activate a virtual environment (recommended)
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 
-# Install dependencies
+# Install dependencies (this pulls Telethon v2 from GitHub — see note below)
 pip install -r requirements.txt
 
 # Copy and configure environment variables
-cp .env.example .env   # if available, or create .env manually
+cp .env.example .env
 # Edit .env with your credentials
 ```
+
+### Installing Telethon v2
+
+Telethon v2 (`2.0.0a0`) is a full rewrite that has **not** been published to
+PyPI yet, so it is installed straight from the official `v2` branch. This is
+already wired into `requirements.txt`, but you can also install it explicitly:
+
+```bash
+pip install "git+https://github.com/LonamiWebs/Telethon.git@v2#subdirectory=client"
+```
+
+- Do **not** run `pip install telethon` — that installs the v1 line from PyPI,
+  which is incompatible with this codebase.
+- Offline/dev environments may install from a local checkout instead:
+  `pip install ./telethon-src/client`.
+- When Telethon 2.0.0 eventually lands on PyPI, the pin in `requirements.txt`
+  can be replaced with `telethon>=2,<3`.
+
+> **Build note:** the v2 branch generates its TL layer at build time and needs
+> `typing_extensions` available during the build. If the wheel build fails with
+> `No module named 'typing_extensions'`, install the build helpers first
+> (`pip install typing_extensions setuptools wheel`) and retry the install.
 
 ---
 
@@ -295,9 +335,24 @@ FCSAPI_TOKEN=your_token_here
 # ── Admin User ID (for 503 notifications) ──
 ADMIN_USER_ID=your_telegram_user_id
 
-# ── Channel Watcher User Phone (optional) ──
+# ── Channel Watcher User Account (optional, requires a user account) ──
+# Phone number in international format for the Channel Watcher user login.
 CW_USER_PHONE=+989123456789
+# Two-step-verification (2FA) password for the Channel Watcher account.
+# Under Telethon v2 the user login is an explicit code + optional password
+# flow. Set this to complete 2FA non-interactively (headless/server runs);
+# if the account has no 2FA, leave it empty. When unset and 2FA is required,
+# the bot falls back to an interactive password prompt on first login.
+CW_USER_PASSWORD=
 ```
+
+> **Telethon v2 login:** the bot account logs in with its token via the v2
+> `connect()` + `bot_sign_in(token)` flow, and the Channel Watcher user account
+> logs in via `connect()` + `request_login_code()` + `sign_in()` (plus
+> `check_password()` when 2FA is enabled). Because the v2 session format differs
+> from v1, existing `bot.session` / `channel_watcher_user.session` files created
+> under v1 are **not** reused — the first v2 run re-authenticates and rewrites
+> them in the new format. See [Telethon v2 Notes](#telethon-v2-notes).
 
 ### Configurable Settings (via Admin Panel or Database)
 
@@ -329,9 +384,17 @@ The bot starts, connects to Telegram, registers all event handlers, loads option
 
 ### Important First-Time Notes
 
-1. On first run, a `bot.session` file is created (Telethon session cache)
+1. On first run, a `bot.session` file is created (Telethon session cache). Under
+   Telethon v2 the session format differs from v1, so a v1-era `bot.session`
+   is **not** reused — the bot re-authenticates with its token and rewrites the
+   file in the v2 format. This is a one-time re-login.
 2. SQLite databases (`bot_database.db`, etc.) are auto-created with all required tables
-3. The Channel Watcher module requires a user account phone number (`CW_USER_PHONE`) — on first load it prompts for a Telegram verification code
+3. The Channel Watcher module requires a user account phone number (`CW_USER_PHONE`).
+   On first load — or after the v2 session re-login — it prompts for the Telegram
+   login code and, if the account has two-step verification enabled, a password.
+   Set `CW_USER_PASSWORD` in `.env` to complete 2FA without an interactive prompt
+   (recommended for headless/server deployments). Once authenticated, the
+   `channel_watcher_user.session` file is cached and subsequent starts skip the prompts.
 4. Logs are written to `logs/telegram.log`, `logs/api_http.log`, `logs/tools.log`
 
 ---
@@ -614,7 +677,85 @@ AI-powered Telegram channel monitoring:
 - **90-day retention** — Automatic cleanup of old analyses
 - **User session** — Uses a separate Telethon user client for channel reading
 
-Loaded automatically on startup. Requires `CW_USER_PHONE` for the user client.
+Loaded automatically on startup. Requires `CW_USER_PHONE` for the user client
+(and, under Telethon v2, a login code on first authentication plus
+`CW_USER_PASSWORD` if the account uses two-step verification).
+
+---
+
+## Telethon v2 Notes
+
+This project runs on **Telethon v2 (`2.0.0a0`)**, the full library rewrite from
+[LonamiWebs/Telethon@v2](https://github.com/LonamiWebs/Telethon). v2 changes a
+lot of surface API relative to the v1 line on PyPI. Rather than scatter those
+differences across the codebase, they are concentrated in a single
+compatibility layer, **`telethon_compat.py`**, which re-exports v2 under
+v1-friendly names and monkeypatches a few methods so the rest of the code reads
+almost like v1.
+
+> **Golden rule:** import every Telethon symbol from `telethon_compat`, never
+> from `telethon` directly. (Notably, `filters` cannot be imported from
+> `telethon` at all in v2.)
+
+### What the compat layer provides
+
+`telethon_compat.py` re-exports and shims:
+
+- `TelegramClient` → v2 `Client`
+- `events`, `types`, `errors` (a factory — any error name resolves), `tl` (the
+  private raw API, `telethon._tl`), and `filters`
+- `InlineKeyboard` and a `Button` shim mapping `Button.inline/url/...` onto
+  v2's `types.buttons.*`
+- Common error aliases: `ChannelPrivateError`, `UsernameNotOccupiedError`,
+  `UserNotParticipantError`, `ChatAdminRequiredError`, `MessageIdInvalidError`,
+  `MessageNotModifiedError`, and more
+- Peer/entity helpers: `strip_channel_mark`, `user_ref`,
+  `channel_ref_from_stored_id`, `peer_ref_from_stored_id`, `_coerce_peer`
+- Event/filter helpers: `data_regex(...)`, `text_regex(...)`
+- A `typing_action(client, peer, interval=4.0)` async context manager (v2 removed
+  `client.action(...)`)
+- `photo_dedup_key(file_obj)` for de-duplicating photos (v2's `event.photo` is a
+  `File` with no `.id`)
+- Thin wrappers for `send_message` / `edit_message` / `send_file` /
+  `delete_messages` that absorb v2 signature changes
+
+### Key v1 → v2 changes (absorbed by the compat layer)
+
+| Area | v1 | v2 |
+|------|----|----|
+| Client type | `TelegramClient` | `Client` (re-exported as `TelegramClient`) |
+| Startup | `client.start(...)` | explicit `connect()` + `is_authorized()` + `bot_sign_in()` / `request_login_code()` + `sign_in()` (+ `check_password()` for 2FA) |
+| Event loop | `client.loop` / `bot.loop.create_task` | `asyncio.create_task` |
+| Typing | `client.action(peer, "typing")` | `typing_action(client, peer)` context manager |
+| Callback event | `events.CallbackQuery(data=/pattern=)` | `events.ButtonCallback` + `filters.Data(...)` / `data_regex(...)` |
+| Incoming filter | `events.NewMessage(incoming=True)` | `events.NewMessage, filters.Incoming()` (NewMessage has no public constructor) |
+| Parse mode | `parse_mode="html"` | per-call `html=` / `caption_html=` |
+| Buttons | `Button.inline/...`, `buttons=[[...]]` | `types.buttons.*`, `keyboard=InlineKeyboard([[...]])` |
+| Entities | marked IDs (`-100…`), `get_entity` | `PeerRef` model (`UserRef`/`ChannelRef`/`GroupRef`), `resolve_username(...)` |
+| Peer display name | `.title` | `.name` |
+| Message text | `raw_text` / `message` | `text` (compat keeps `.message`) |
+| Fetch history | `iter_messages(entity, min_id=)` | `get_messages(peer, limit)` — no `min_id`, filter `msg.id > last_id` manually |
+| Delete | `delete_messages(chat, id)` | `delete_messages(peer, [ids])` — list required |
+| Send file | `send_file([...], thumb=)` | single file, no `thumb=`; albums via `prepare_album()` |
+| Flood wait | `FloodWaitError.seconds` | `.value` |
+
+Full details, rationale, and gotchas are recorded in `MIGRATION_NOTES.md`. Every
+non-trivial migrated line carries an inline `# v2: <old> → <new>` comment so the
+reasoning stays close to the code.
+
+### Session compatibility (re-login required)
+
+The v2 session storage format is **not** compatible with v1 session files.
+On the first run under v2:
+
+- `bot.session` — the bot re-authenticates with its token and rewrites the file
+  in the v2 format (no user action needed beyond a valid `TELEGRAM_BOT_TOKEN`).
+- `channel_watcher_user.session` — the Channel Watcher user account performs a
+  fresh login: it requests a Telegram login code (entered interactively) and, if
+  two-step verification is enabled, a password (`CW_USER_PASSWORD`, or an
+  interactive prompt). After this one-time re-login the v2 session is cached.
+
+Do **not** delete these session files once re-created.
 
 ---
 
@@ -625,13 +766,13 @@ Loaded automatically on startup. Requires `CW_USER_PHONE` for the user client.
 1. `telegram.py` reads environment variables, creates `TelegramBot` instance
 2. `TelegramBot.__init__()`:
    - Initializes SQLite database (`DatabaseManager`)
-   - Creates Telethon `TelegramClient`
+   - Creates the Telethon v2 client (`Client`, imported as `TelegramClient` from `telethon_compat`)
    - Initializes data structures (sessions dict, sets, caches)
    - Initializes `Gemini503Manager` singleton
    - Binds and registers all event handlers
 3. `TelegramBot.run()`:
    - Checks for missed 12-hour resets
-   - Starts Telegram client
+   - Connects and signs in the bot (v2 `connect()` + `bot_sign_in(token)`)
    - Loads Trade Journal module
    - Loads Channel Watcher module
    - Starts background tasks: `_daily_reset_loop`, `_cleanup_stale_data_loop`
@@ -696,14 +837,29 @@ api_http → telegram.constants → telegram.__init__ → telegram.bot → api_h
 
 ### Handler Registration Order
 
-Telethon uses `re.match()` for callback patterns. When two patterns share a prefix (e.g., `service_delete:` and `service_delete_confirm:`), the more specific pattern must be registered first. Negative lookaheads are used where ordering is insufficient:
+Callback patterns are matched by regex against the callback data. When two
+patterns share a prefix (e.g., `service_delete:` and `service_delete_confirm:`),
+the more specific pattern must be registered first. Negative lookaheads are used
+where ordering is insufficient.
+
+Under Telethon v2, events and filters are separate objects combined at
+registration time, and the old `events.CallbackQuery` type is now
+`events.ButtonCallback`. Regex-on-data is expressed through the compat helper
+`data_regex(...)` (a thin wrapper over `filters.Data`), so the registration
+reads:
 
 ```python
+from telethon_compat import events, data_regex
+
 # service_delete_confirm registered FIRST
-self.bot.on(events.CallbackQuery(pattern=r"service_delete_confirm:"))(self.service_delete_confirm)
-# service_delete uses negative lookahead
-self.bot.on(events.CallbackQuery(pattern=r"^service_delete:(?!confirm)"))(self.service_delete)
+self.bot.on(events.ButtonCallback, data_regex(r"service_delete_confirm:"))(self.service_delete_confirm)
+# service_delete uses a negative lookahead
+self.bot.on(events.ButtonCallback, data_regex(r"^service_delete:(?!confirm)"))(self.service_delete)
 ```
+
+> Always import Telethon symbols (`events`, `filters`, `types`, `errors`, `tl`,
+> `data_regex`, `text_regex`, …) from `telethon_compat`, never from `telethon`
+> directly — the compat layer is where the v1→v2 differences are absorbed.
 
 ---
 
@@ -725,7 +881,11 @@ self.bot.on(events.CallbackQuery(pattern=r"^service_delete:(?!confirm)"))(self.s
 - Image generation API (`freegen.app`) can be unreliable during high demand
 - FCSAPI has inherent data delays per timeframe (1m/5m real-time, 1D ~6h delay)
 - OpenAI-compatible providers may return `None` for `message.content` in tool-call-only responses
-- Channel Watcher user client may fail to start if Telegram sends a code confirmation that requires interactive input
+- Channel Watcher user login is interactive on first authentication (Telethon v2
+  requests a login code, and a 2FA password if enabled). For headless/server
+  deployments, perform the first login interactively once, or set
+  `CW_USER_PASSWORD` and pipe the code in — after that the cached
+  `channel_watcher_user.session` is reused
 
 ---
 
@@ -739,13 +899,47 @@ RuntimeError: TELEGRAM_API_ID, TELEGRAM_API_HASH, and TELEGRAM_BOT_TOKEN must be
 
 **Solution:** Ensure `.env` file exists in the project root with all three variables set.
 
+### Wrong Telethon version installed
+
+```
+ImportError: cannot import name 'Client' from 'telethon'
+# or various AttributeError / "has no public constructor" errors at import time
+```
+
+**Solution:** You almost certainly have the PyPI v1 line installed. This project
+requires Telethon **v2** (`2.0.0a0`). Reinstall from the `v2` branch:
+
+```bash
+pip uninstall -y telethon
+pip install "git+https://github.com/LonamiWebs/Telethon.git@v2#subdirectory=client"
+python -c "import telethon; print(telethon.__version__)"   # expect 2.0.0a0
+```
+
+If the wheel build fails with `No module named 'typing_extensions'`, install the
+build helpers first: `pip install typing_extensions setuptools wheel`, then retry.
+
+### Session no longer valid after upgrading to v2
+
+```
+The bot / user account re-requests login on startup
+```
+
+**Solution:** This is expected. The Telethon v2 session format differs from v1,
+so old `bot.session` / `channel_watcher_user.session` files are not reused. Let
+the bot re-authenticate once (bot token for `bot.session`; login code + optional
+`CW_USER_PASSWORD` for the Channel Watcher account). The new v2-format sessions
+are then cached and reused on subsequent runs. Do **not** delete these session
+files once they are re-created.
+
 ### Dependency issues
 
 ```
 ModuleNotFoundError: No module named 'google.genai'
 ```
 
-**Solution:** Run `pip install -r requirements.txt`. The `google-generativeai` library is a core dependency.
+**Solution:** Run `pip install -r requirements.txt`. The `google-genai` library
+(the Google GenAI SDK, imported as `from google import genai`) is a core
+dependency.
 
 ### Market data tool returns errors
 

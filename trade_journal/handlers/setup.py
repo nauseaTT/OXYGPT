@@ -1,8 +1,11 @@
 import logging
 from typing import Any
 
-from telethon import TelegramClient, events
-from telethon.tl.custom import Button
+# v2: `from telethon import TelegramClient, events` -> compat re-exports.
+# The compat layer aliases `TelegramClient` to v2's `Client`, provides the
+# v2 `events` module, `filters`, and the `data_regex` helper that reproduces
+# v1's `events.CallbackQuery(pattern=...)` regex-matching semantics.
+from telethon_compat import TelegramClient, events, Button, filters, data_regex
 
 from .. import database as db
 from ..states import set_state, get_state_data, clear_state, AWAIT_CHANNEL_FORWARD, AWAIT_MARGIN, IDLE
@@ -15,9 +18,9 @@ logger = logging.getLogger(__name__)
 
 
 def register_setup_handlers(client: TelegramClient) -> None:
-    client.on(events.CallbackQuery(data=b"tj_settings_channel"))(_handle_setup_channel)
-    client.on(events.CallbackQuery(data=b"tj_cancel_setup"))(_handle_cancel_setup)
-    client.on(events.CallbackQuery(data=b"tj_settings_margin"))(_handle_settings_margin)
+    client.on(events.ButtonCallback, filters.Data(b"tj_settings_channel"))(_handle_setup_channel)
+    client.on(events.ButtonCallback, filters.Data(b"tj_cancel_setup"))(_handle_cancel_setup)
+    client.on(events.ButtonCallback, filters.Data(b"tj_settings_margin"))(_handle_settings_margin)
 
 
 async def _handle_setup_channel(event: Any) -> None:

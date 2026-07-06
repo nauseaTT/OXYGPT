@@ -16,8 +16,14 @@ needing a bot or client argument.
 import logging
 from typing import Any, Optional
 
-from telethon import TelegramClient, events, Button
-from telethon.tl.functions.channels import JoinChannelRequest
+# v2: `from telethon import TelegramClient, events, Button` -> compat re-exports
+# plus `filters`/`data_regex`. v2: raw API is private+snake_case, so
+# `from telethon.tl.functions.channels import JoinChannelRequest` ->
+# `tl.functions.channels.join_channel(...)` (accessed via the compat `tl`).
+from telethon_compat import (
+    TelegramClient, events, Button, filters, data_regex, tl,
+    channel_ref_from_stored_id,
+)
 
 from ..database import (
     create_monitor,
@@ -125,8 +131,15 @@ async def cw_handle_group_link(event) -> None:
 
     # Also ensure bot is in the group so it can send messages
     try:
-        bot_entity = await _client.get_entity(info["chat_id"])
-        await _client(JoinChannelRequest(bot_entity))
+        # v2: `get_entity(id)` was removed (no entity cache) and
+        #     `client(JoinChannelRequest(entity))` -> the private snake_case raw
+        #     function `tl.functions.channels.join_channel(channel=<InputChannel>)`.
+        #     We build the InputChannel directly from the stored chat id via a
+        #     `ChannelRef`, so no entity lookup round-trip is needed.
+        chan_ref = channel_ref_from_stored_id(info["chat_id"])
+        await _client(tl.functions.channels.join_channel(
+            channel=chan_ref._to_input_channel()
+        ))
     except Exception as exc:
         logger.warning("Bot could not join group %s: %s", info.get("username"), exc)
 
@@ -168,7 +181,7 @@ def register_setup_handlers(client: TelegramClient, bot_instance: Any, user_clie
     _user_client = user_client
 
     # Step 0: Start
-    @client.on(events.CallbackQuery(data=b"cw_new_monitor"))
+    @client.on(events.ButtonCallback, filters.Data(b"cw_new_monitor"))
     async def cw_new_monitor_start(event):
         uid = event.sender_id
         if await _check_monitor_limit(uid, event):
@@ -185,7 +198,7 @@ def register_setup_handlers(client: TelegramClient, bot_instance: Any, user_clie
         )
 
     # Step 2: Delivery choice
-    @client.on(events.CallbackQuery(data=b"cw_delivery_pm"))
+    @client.on(events.ButtonCallback, filters.Data(b"cw_delivery_pm"))
     async def cw_delivery_pm(event):
         uid = event.sender_id
         state, data = await _state_mgr.get_state(uid)
@@ -198,7 +211,7 @@ def register_setup_handlers(client: TelegramClient, bot_instance: Any, user_clie
         await _state_mgr.set_state(uid, UserState.AWAITING_CONFIRM, data)
         await _show_confirmation(event, data)
 
-    @client.on(events.CallbackQuery(data=b"cw_delivery_group"))
+    @client.on(events.ButtonCallback, filters.Data(b"cw_delivery_group"))
     async def cw_delivery_group(event):
         uid = event.sender_id
         state, data = await _state_mgr.get_state(uid)
@@ -217,7 +230,7 @@ def register_setup_handlers(client: TelegramClient, bot_instance: Any, user_clie
         )
 
     # Step 4: Confirm
-    @client.on(events.CallbackQuery(data=b"cw_confirm_monitor"))
+    @client.on(events.ButtonCallback, filters.Data(b"cw_confirm_monitor"))
     async def cw_confirm_monitor(event):
         uid = event.sender_id
         state, data = await _state_mgr.get_state(uid)
@@ -277,7 +290,7 @@ def register_setup_handlers(client: TelegramClient, bot_instance: Any, user_clie
         start_monitor_task(monitor_id, _client, _user_client, _bot)
 
     # List monitors
-    @client.on(events.CallbackQuery(data=b"cw_list_monitors"))
+    @client.on(events.ButtonCallback, filters.Data(b"cw_list_monitors"))
     async def cw_list_monitors(event):
         try:
             uid = event.sender_id
@@ -314,7 +327,7 @@ def register_setup_handlers(client: TelegramClient, bot_instance: Any, user_clie
                 pass
 
     # Back to main
-    @client.on(events.CallbackQuery(data=b"cw_back_main"))
+    @client.on(events.ButtonCallback, filters.Data(b"cw_back_main"))
     async def cw_back_main(event):
         uid = event.sender_id
         await _state_mgr.clear_state(uid)
@@ -322,7 +335,7 @@ def register_setup_handlers(client: TelegramClient, bot_instance: Any, user_clie
         await back_to_main_cb(_bot, event)
 
     # Back to edit
-    @client.on(events.CallbackQuery(data=b"cw_back_edit"))
+    @client.on(events.ButtonCallback, filters.Data(b"cw_back_edit"))
     async def cw_back_edit(event):
         uid = event.sender_id
         _, data = await _state_mgr.get_state(uid)
@@ -336,7 +349,7 @@ def register_setup_handlers(client: TelegramClient, bot_instance: Any, user_clie
         )
 
     # Upgrade prompt
-    @client.on(events.CallbackQuery(data=b"cw_upgrade_required"))
+    @client.on(events.ButtonCallback, filters.Data(b"cw_upgrade_required"))
     async def cw_upgrade_required(event):
         await event.answer(
             "این قابلیت نیاز به اشتراک پولی دارد. با پشتیبانی تماس بگیرید.",

@@ -1,6 +1,8 @@
 from typing import Any, Dict, List, Optional
 from datetime import datetime
-from telethon.tl.custom import Button
+# v2: v1 `telethon.tl.custom.Button` factory -> compat `Button` shim, which
+# builds v2 `telethon.types.buttons.*` instances under the hood.
+from telethon_compat import Button
 
 from .formatter import MANDATORY_FIELDS
 

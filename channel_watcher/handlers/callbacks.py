@@ -22,7 +22,13 @@ import json
 import logging
 from typing import Any, Optional
 
-from telethon import TelegramClient, events, Button
+# v2: `from telethon import TelegramClient, events, Button` -> compat re-exports.
+# TelegramClient is aliased to v2's `Client`; `filters`/`data_regex` provide the
+# split event+filter registration model; `typing_action` replaces the removed
+# `client.action(...)` typing context manager.
+from telethon_compat import (
+    TelegramClient, events, Button, filters, data_regex, typing_action,
+)
 
 from ..database import (
     get_monitor,
@@ -155,7 +161,11 @@ async def cw_handle_ask_ai_message(event) -> None:
     # reads as the bot being broken.
     placeholder = await event.reply(THINKING_TEXT, parse_mode="html")
     try:
-        async with _client.action(uid, "typing"):
+        # v2: `client.action(peer, "typing")` was removed. `typing_action` is the
+        #     compat replacement — an async context manager that pings
+        #     `messages.set_typing` on entry and every few seconds until exit.
+        #     The int `uid` is coerced to a `UserRef` internally.
+        async with typing_action(_client, uid):
             response_text = await _ask_model(uid, monitor_id, session_id, question)
     except Exception:
         logger.exception("Ask AI turn crashed for user %s", uid)
@@ -228,7 +238,7 @@ def register_callback_handlers(client: TelegramClient, bot_instance: Any) -> Non
         )
         await safe_edit(event, intro, buttons=kb, parse_mode="html")
 
-    @client.on(events.CallbackQuery(pattern=ASK_RE))
+    @client.on(events.ButtonCallback, data_regex(ASK_RE))
     async def cw_ask_ai_start(event):
         """Start an Ask AI conversation on a specific analysed message."""
         uid = event.sender_id
@@ -239,7 +249,7 @@ def register_callback_handlers(client: TelegramClient, bot_instance: Any) -> Non
             return
         await _open_ask_ai(event, uid, monitor_id, msg_id)
 
-    @client.on(events.CallbackQuery(pattern=SUGGEST_RE))
+    @client.on(events.ButtonCallback, data_regex(SUGGEST_RE))
     async def cw_ask_ai_suggestion(event):
         """One-tap quick question: run the exact same pipeline as free-text input."""
         uid = event.sender_id
@@ -281,7 +291,9 @@ def register_callback_handlers(client: TelegramClient, bot_instance: Any) -> Non
         await safe_edit(event, THINKING_TEXT, parse_mode="html", fallback_reply=False)
 
         try:
-            async with client.action(uid, "typing"):
+            # v2: `client.action(peer, "typing")` -> `typing_action` compat
+            #     context manager (see note above); `uid` -> UserRef internally.
+            async with typing_action(client, uid):
                 response_text = await _ask_model(uid, monitor_id, session_id, question)
         except Exception:
             logger.exception("Ask AI suggestion turn crashed for user %s", uid)
@@ -303,7 +315,7 @@ def register_callback_handlers(client: TelegramClient, bot_instance: Any) -> Non
 
         await safe_edit(event, text, buttons=kb, parse_mode="html")
 
-    @client.on(events.CallbackQuery(pattern=CLEAR_RE))
+    @client.on(events.ButtonCallback, data_regex(CLEAR_RE))
     async def cw_ask_ai_clear(event):
         """Wipe the Q&A history for this session, keeping the pinned post context."""
         uid = event.sender_id
@@ -326,7 +338,7 @@ def register_callback_handlers(client: TelegramClient, bot_instance: Any) -> Non
         await event.answer("🧹 گفتگو پاک شد.")
         await _open_ask_ai(event, uid, monitor_id, msg_id)
 
-    @client.on(events.CallbackQuery(pattern=FULLTEXT_RE))
+    @client.on(events.ButtonCallback, data_regex(FULLTEXT_RE))
     async def cw_ask_ai_fulltext(event):
         """Toggle between the AI summary and the raw original post text."""
         uid = event.sender_id
@@ -341,7 +353,7 @@ def register_callback_handlers(client: TelegramClient, bot_instance: Any) -> Non
         show_full_text = not bool((data or {}).get("show_full_text", False)) if state == UserState.AWAITING_ASK_AI else True
         await _open_ask_ai(event, uid, monitor_id, msg_id, show_full_text)
 
-    @client.on(events.CallbackQuery(pattern=EXIT_RE))
+    @client.on(events.ButtonCallback, data_regex(EXIT_RE))
     async def cw_exit_ask_ai(event):
         """Exit Ask AI mode and return to the monitor settings."""
         uid = event.sender_id

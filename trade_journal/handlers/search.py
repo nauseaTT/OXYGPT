@@ -1,8 +1,11 @@
 import logging
 from typing import Any, List, Dict
 
-from telethon import TelegramClient, events
-from telethon.tl.custom import Button
+# v2: `from telethon import TelegramClient, events` -> compat re-exports.
+# The compat layer aliases `TelegramClient` to v2's `Client`, provides the
+# v2 `events` module, `filters`, and the `data_regex` helper that reproduces
+# v1's `events.CallbackQuery(pattern=...)` regex-matching semantics.
+from telethon_compat import TelegramClient, events, Button, filters, data_regex
 
 from .. import database as db
 from ..states import set_state, get_state_str, get_state_data, clear_state, IDLE
@@ -24,13 +27,13 @@ def register_search_handlers(client: TelegramClient) -> None:
             return await handler(event)
         return wrapper
 
-    client.on(events.CallbackQuery(data=b"tj_search"))(wrap(_handle_search))
-    client.on(events.CallbackQuery(data=b"tj_search_symbol"))(wrap(_handle_search_symbol))
-    client.on(events.CallbackQuery(data=b"tj_search_date"))(wrap(_handle_search_date))
-    client.on(events.CallbackQuery(data=b"tj_search_pnl"))(wrap(_handle_search_pnl))
-    client.on(events.CallbackQuery(data=b"tj_search_tag"))(wrap(_handle_search_tag))
-    client.on(events.CallbackQuery(pattern=r"tj_search_sym_select:"))(wrap(_handle_search_sym_select))
-    client.on(events.CallbackQuery(pattern=r"tj_search_pnl_type:"))(wrap(_handle_search_pnl_type))
+    client.on(events.ButtonCallback, filters.Data(b"tj_search"))(wrap(_handle_search))
+    client.on(events.ButtonCallback, filters.Data(b"tj_search_symbol"))(wrap(_handle_search_symbol))
+    client.on(events.ButtonCallback, filters.Data(b"tj_search_date"))(wrap(_handle_search_date))
+    client.on(events.ButtonCallback, filters.Data(b"tj_search_pnl"))(wrap(_handle_search_pnl))
+    client.on(events.ButtonCallback, filters.Data(b"tj_search_tag"))(wrap(_handle_search_tag))
+    client.on(events.ButtonCallback, data_regex(r"tj_search_sym_select:"))(wrap(_handle_search_sym_select))
+    client.on(events.ButtonCallback, data_regex(r"tj_search_pnl_type:"))(wrap(_handle_search_pnl_type))
 
 
 async def _handle_search(event: Any) -> None:

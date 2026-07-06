@@ -1,7 +1,8 @@
 import logging
 from typing import Any
 
-from telethon import TelegramClient, events
+# v2: `from telethon import TelegramClient, events` -> compat re-exports.
+from telethon_compat import TelegramClient, events, filters, data_regex
 
 from .. import database as db
 from ..states import (
@@ -17,7 +18,7 @@ from ..ui.keyboards import (
     template_field_list_keyboard, field_type_keyboard,
     field_section_keyboard, confirm_delete_keyboard, field_required_keyboard
 )
-from telethon.tl.custom import Button
+from telethon_compat import Button  # v2: buttons via compat (v1 telethon.tl.custom.Button)
 from ..utils import get_callback_parts, parse_callback_int, parse_callback_str
 
 logger = logging.getLogger(__name__)
@@ -27,25 +28,25 @@ MAX_FIELD_LABEL_LENGTH = 25
 
 
 def register_template_handlers(client: TelegramClient) -> None:
-    client.on(events.CallbackQuery(pattern=r"tj_tpl_edit:"))(_handle_tpl_edit)
-    client.on(events.CallbackQuery(pattern=r"tj_tpl_delete:"))(_handle_tpl_delete)
-    client.on(events.CallbackQuery(pattern=r"tj_confirm_delete_template:"))(_handle_tpl_confirm_delete)
-    client.on(events.CallbackQuery(pattern=r"tj_tpl_copy:"))(_handle_tpl_copy)
-    client.on(events.CallbackQuery(data=b"tj_tpl_create"))(_handle_tpl_create)
-    client.on(events.CallbackQuery(pattern=r"tj_tpl_field_add:"))(_handle_field_add)
-    client.on(events.CallbackQuery(pattern=r"tj_tpl_field_type:"))(_handle_field_type)
-    client.on(events.CallbackQuery(pattern=r"tj_tpl_field_del:"))(_handle_field_del)
-    client.on(events.CallbackQuery(pattern=r"tj_tpl_field_del_list:"))(_handle_field_del_list)
-    client.on(events.CallbackQuery(data=b"tj_back_templates"))(_handle_back_templates)
-    client.on(events.CallbackQuery(data=b"tj_cancel_field_add"))(_handle_cancel_field_add)
-    client.on(events.CallbackQuery(pattern=r"tj_tpl_field_info:"))(_handle_field_info)
-    client.on(events.CallbackQuery(pattern=r"tj_template_select:"))(_handle_template_select)
-    client.on(events.CallbackQuery(pattern=r"tj_set_default:"))(_handle_set_default)
-    client.on(events.CallbackQuery(pattern=r"tj_tpl_field_section:"))(_handle_field_section)
-    client.on(events.CallbackQuery(pattern=r"tj_tpl_channel:"))(_handle_tpl_channel)
-    client.on(events.CallbackQuery(pattern=r"tj_tpl_channel_set:"))(_handle_tpl_channel_set)
-    client.on(events.CallbackQuery(pattern=r"tj_quick_add_field:"))(_handle_quick_add_field)
-    client.on(events.CallbackQuery(pattern=r"tj_tpl_field_required:"))(_handle_field_required)
+    client.on(events.ButtonCallback, data_regex(r"tj_tpl_edit:"))(_handle_tpl_edit)
+    client.on(events.ButtonCallback, data_regex(r"tj_tpl_delete:"))(_handle_tpl_delete)
+    client.on(events.ButtonCallback, data_regex(r"tj_confirm_delete_template:"))(_handle_tpl_confirm_delete)
+    client.on(events.ButtonCallback, data_regex(r"tj_tpl_copy:"))(_handle_tpl_copy)
+    client.on(events.ButtonCallback, filters.Data(b"tj_tpl_create"))(_handle_tpl_create)
+    client.on(events.ButtonCallback, data_regex(r"tj_tpl_field_add:"))(_handle_field_add)
+    client.on(events.ButtonCallback, data_regex(r"tj_tpl_field_type:"))(_handle_field_type)
+    client.on(events.ButtonCallback, data_regex(r"tj_tpl_field_del:"))(_handle_field_del)
+    client.on(events.ButtonCallback, data_regex(r"tj_tpl_field_del_list:"))(_handle_field_del_list)
+    client.on(events.ButtonCallback, filters.Data(b"tj_back_templates"))(_handle_back_templates)
+    client.on(events.ButtonCallback, filters.Data(b"tj_cancel_field_add"))(_handle_cancel_field_add)
+    client.on(events.ButtonCallback, data_regex(r"tj_tpl_field_info:"))(_handle_field_info)
+    client.on(events.ButtonCallback, data_regex(r"tj_template_select:"))(_handle_template_select)
+    client.on(events.ButtonCallback, data_regex(r"tj_set_default:"))(_handle_set_default)
+    client.on(events.ButtonCallback, data_regex(r"tj_tpl_field_section:"))(_handle_field_section)
+    client.on(events.ButtonCallback, data_regex(r"tj_tpl_channel:"))(_handle_tpl_channel)
+    client.on(events.ButtonCallback, data_regex(r"tj_tpl_channel_set:"))(_handle_tpl_channel_set)
+    client.on(events.ButtonCallback, data_regex(r"tj_quick_add_field:"))(_handle_quick_add_field)
+    client.on(events.ButtonCallback, data_regex(r"tj_tpl_field_required:"))(_handle_field_required)
 
 
 async def _show_template_preview(event: Any, uid: int, template_id: int) -> None:

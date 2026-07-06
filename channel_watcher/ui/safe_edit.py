@@ -16,7 +16,10 @@ show updated content. Two Telegram-side error conditions are routine
 import logging
 from typing import Any, Optional
 
-from telethon.errors import MessageIdInvalidError, MessageNotModifiedError
+# v2: `telethon.errors` became a factory module that synthesises any `*Error`
+# name on access. The compat layer re-exports the concrete classes these
+# handlers catch so `except MessageIdInvalidError` keeps working unchanged.
+from telethon_compat import MessageIdInvalidError, MessageNotModifiedError
 
 logger = logging.getLogger(__name__)
 

@@ -8,7 +8,12 @@ import asyncio
 import logging
 from typing import Any, Dict, List, Optional
 
-from telethon import TelegramClient, Button
+# v2: `from telethon import TelegramClient, Button` -> compat re-exports.
+# TelegramClient is aliased to v2's `Client`; `Button` is the compat shim that
+# builds v2 `telethon.types.buttons.*` objects. The `send_message`/`send_file`
+# calls in this class route through the compat wrappers (int peer -> Ref,
+# `parse_mode="html"` -> `html=`, `buttons=` -> `keyboard=`).
+from telethon_compat import TelegramClient, Button
 
 from ..ui.formatter import format_analysis_card
 from ..ui.keyboards import analysis_card_keyboard_with_link

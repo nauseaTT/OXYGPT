@@ -26,8 +26,10 @@ import os
 import re
 import logging
 from typing import Any, Optional, TYPE_CHECKING
-from telethon import Button
-from telethon.errors import MessageNotModifiedError
+# v2: Button facade + v2 error class + raw API (`tl`) all via the compat layer.
+# The raw typing request moved to the private `telethon._tl` namespace and is
+# snake_case in v2 (see the two typing-indicator blocks below).
+from telethon_compat import Button, MessageNotModifiedError, tl
 
 from ..animator import StatusAnimator
 from ..utils import clean_number_string, get_time_until_reset, safe_html_truncate
@@ -410,12 +412,16 @@ async def _process_reply_ask(
         ai_service.history = []
 
         # ── Typing indicator ──
+        # v2: the raw request `SetTypingRequest` (from telethon.tl.functions)
+        # moved to the private, snake_case `tl.functions.messages.set_typing`,
+        # and `SendMessageTypingAction` to `tl.types`. v2 also removed the entity
+        # cache, so `peer=` must be an InputPeer built from the event's chat
+        # reference rather than a bare id. (see migration guide: raw API is private)
         try:
-            from telethon.tl.functions.messages import SetTypingRequest
-            from telethon.tl.types import SendMessageTypingAction
-            await self.bot(SetTypingRequest(
-                peer=event.chat_id,
-                action=SendMessageTypingAction(),
+            await self.bot(tl.functions.messages.set_typing(
+                peer=event.chat.ref._to_input_peer(),
+                top_msg_id=None,
+                action=tl.types.SendMessageTypingAction(),
             ))
         except Exception:
             pass
@@ -1280,6 +1286,10 @@ async def pending_message_handler(self: "TelegramBot", event: Any) -> None:
         is_private = event.is_private
         is_command = bool(event.text and event.text.startswith("/"))
         is_reply_to_bot = False
+        # v2: `event.is_reply` / `event.get_reply_message()` were renamed to
+        # `replied_message_id` / `get_replied_message()`. The compat layer keeps
+        # the v1 names as thin wrappers over the v2 API, and adds `sender_id`
+        # (v2 exposes only `.sender`). No behavioral change.
         if event.is_reply:
             reply_msg = await event.get_reply_message()
             if reply_msg and reply_msg.sender_id == (await self.bot.get_me()).id:
@@ -1346,12 +1356,14 @@ async def pending_message_handler(self: "TelegramBot", event: Any) -> None:
                 # Lightweight "bot is typing" feedback before the
                 # heavier animation starts.  Costs zero API calls
                 # and auto-expires after ~5 seconds.
+                # v2: raw request is private + snake_case
+                # (`tl.functions.messages.set_typing`); `peer=` needs an
+                # InputPeer built from the event chat (no more entity cache).
                 try:
-                    from telethon.tl.functions.messages import SetTypingRequest
-                    from telethon.tl.types import SendMessageTypingAction
-                    await self.bot(SetTypingRequest(
-                        peer=event.chat_id,
-                        action=SendMessageTypingAction()
+                    await self.bot(tl.functions.messages.set_typing(
+                        peer=event.chat.ref._to_input_peer(),
+                        top_msg_id=None,
+                        action=tl.types.SendMessageTypingAction()
                     ))
                 except Exception:
                     pass  # Non-critical, safe to ignore
@@ -1460,6 +1472,11 @@ async def pending_message_handler(self: "TelegramBot", event: Any) -> None:
                         if is_group:
                             for prev_msg, _ in self.previous_ai_messages[uid]:
                                 try:
+                                    # v2: `message.message`/`raw_text` were removed
+                                    # in favor of `message.text`. The compat layer
+                                    # aliases `.message` -> `.text`, so this
+                                    # `prev_msg.text or prev_msg.message` fallback
+                                    # is harmless (both yield the same text).
                                     full_text = prev_msg.text or prev_msg.message or ""
                                     lines = full_text.split('\n')
                                     collapsed = '\n'.join(lines[:3]) + ('\n...' if len(lines) > 3 else '')

@@ -1,8 +1,11 @@
 import logging
 from typing import Any
 
-from telethon import TelegramClient, events
-from telethon.tl.custom import Button
+# v2: `from telethon import TelegramClient, events` -> compat re-exports.
+# The compat layer aliases `TelegramClient` to v2's `Client`, provides the
+# v2 `events` module, `filters`, and the `data_regex` helper that reproduces
+# v1's `events.CallbackQuery(pattern=...)` regex-matching semantics.
+from telethon_compat import TelegramClient, events, Button, filters, data_regex
 
 from .. import database as db
 from ..states import (
@@ -35,28 +38,28 @@ def register_live_form_handlers(client: TelegramClient) -> None:
             return await handler(event)
         return wrapper
 
-    client.on(events.CallbackQuery(pattern=r"tj_field:"))(wrap(_handle_field_click))
-    client.on(events.CallbackQuery(pattern=r"tj_dir:"))(wrap(_handle_direction))
-    client.on(events.CallbackQuery(pattern=r"tj_date:"))(wrap(_handle_date))
-    client.on(events.CallbackQuery(data=b"tj_add_photo"))(wrap(_handle_add_photo))
-    client.on(events.CallbackQuery(data=b"tj_preview"))(wrap(_handle_preview))
-    client.on(events.CallbackQuery(data=b"tj_finalize"))(wrap(_handle_finalize))
-    client.on(events.CallbackQuery(data=b"tj_confirm_post"))(wrap(_handle_confirm_post))
-    client.on(events.CallbackQuery(data=b"tj_continue_edit"))(wrap(_handle_continue_edit))
-    client.on(events.CallbackQuery(data=b"tj_cancel_trade"))(wrap(_handle_cancel_trade))
-    client.on(events.CallbackQuery(pattern=r"tj_toggle:"))(wrap(_handle_toggle_checkbox))
-    client.on(events.CallbackQuery(pattern=r"tj_text_field:"))(wrap(_handle_text_field_click))
-    client.on(events.CallbackQuery(data=b"tj_done_photo"))(wrap(_handle_done_photo))
-    client.on(events.CallbackQuery(pattern=r"tj_sym_form:"))(wrap(_handle_symbol_form_select))
-    client.on(events.CallbackQuery(data=b"tj_sym_add_form"))(wrap(_handle_symbol_add_form))
-    client.on(events.CallbackQuery(data=b"tj_cancel_field_edit"))(wrap(_handle_cancel_field_edit))
-    client.on(events.CallbackQuery(pattern=r"tj_vol:"))(wrap(_handle_volume_select))
-    client.on(events.CallbackQuery(data=b"tj_vol_custom"))(wrap(_handle_volume_custom))
-    client.on(events.CallbackQuery(data=b"tj_skip_scoring"))(wrap(_handle_skip_scoring))
-    client.on(events.CallbackQuery(pattern=r"tj_score:"))(wrap(_handle_score_set))
-    client.on(events.CallbackQuery(pattern=r"tj_choice:"))(wrap(_handle_choice_select))
-    client.on(events.CallbackQuery(pattern=r"tj_photo_replace:"))(wrap(_handle_photo_replace))
-    client.on(events.CallbackQuery(pattern=r"tj_photo_delete:"))(wrap(_handle_photo_delete))
+    client.on(events.ButtonCallback, data_regex(r"tj_field:"))(wrap(_handle_field_click))
+    client.on(events.ButtonCallback, data_regex(r"tj_dir:"))(wrap(_handle_direction))
+    client.on(events.ButtonCallback, data_regex(r"tj_date:"))(wrap(_handle_date))
+    client.on(events.ButtonCallback, filters.Data(b"tj_add_photo"))(wrap(_handle_add_photo))
+    client.on(events.ButtonCallback, filters.Data(b"tj_preview"))(wrap(_handle_preview))
+    client.on(events.ButtonCallback, filters.Data(b"tj_finalize"))(wrap(_handle_finalize))
+    client.on(events.ButtonCallback, filters.Data(b"tj_confirm_post"))(wrap(_handle_confirm_post))
+    client.on(events.ButtonCallback, filters.Data(b"tj_continue_edit"))(wrap(_handle_continue_edit))
+    client.on(events.ButtonCallback, filters.Data(b"tj_cancel_trade"))(wrap(_handle_cancel_trade))
+    client.on(events.ButtonCallback, data_regex(r"tj_toggle:"))(wrap(_handle_toggle_checkbox))
+    client.on(events.ButtonCallback, data_regex(r"tj_text_field:"))(wrap(_handle_text_field_click))
+    client.on(events.ButtonCallback, filters.Data(b"tj_done_photo"))(wrap(_handle_done_photo))
+    client.on(events.ButtonCallback, data_regex(r"tj_sym_form:"))(wrap(_handle_symbol_form_select))
+    client.on(events.ButtonCallback, filters.Data(b"tj_sym_add_form"))(wrap(_handle_symbol_add_form))
+    client.on(events.ButtonCallback, filters.Data(b"tj_cancel_field_edit"))(wrap(_handle_cancel_field_edit))
+    client.on(events.ButtonCallback, data_regex(r"tj_vol:"))(wrap(_handle_volume_select))
+    client.on(events.ButtonCallback, filters.Data(b"tj_vol_custom"))(wrap(_handle_volume_custom))
+    client.on(events.ButtonCallback, filters.Data(b"tj_skip_scoring"))(wrap(_handle_skip_scoring))
+    client.on(events.ButtonCallback, data_regex(r"tj_score:"))(wrap(_handle_score_set))
+    client.on(events.ButtonCallback, data_regex(r"tj_choice:"))(wrap(_handle_choice_select))
+    client.on(events.ButtonCallback, data_regex(r"tj_photo_replace:"))(wrap(_handle_photo_replace))
+    client.on(events.ButtonCallback, data_regex(r"tj_photo_delete:"))(wrap(_handle_photo_delete))
 
 
 async def _handle_field_click(event: Any) -> None:

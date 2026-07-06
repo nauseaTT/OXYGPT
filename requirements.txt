@@ -1,4 +1,10 @@
-telethon
+# Telethon v2 (2.0.0a0). v2 is a full rewrite and is not yet published as a
+# stable release on PyPI, so it is installed from the official `v2` branch.
+# The pin below documents the exact target; install with:
+#   pip install "git+https://github.com/LonamiWebs/Telethon.git@v2#subdirectory=client"
+# (offline/dev environments may `pip install ./telethon-src/client`).
+# When Telethon 2.0.0 is published to PyPI, replace this with:  telethon>=2,<3
+telethon @ git+https://github.com/LonamiWebs/Telethon.git@v2#subdirectory=client
 google-generativeai
 openai
 pandas

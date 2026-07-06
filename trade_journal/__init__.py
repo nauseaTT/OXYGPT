@@ -3,7 +3,11 @@ import asyncio
 import os
 import shutil
 from datetime import datetime
-from telethon import TelegramClient
+# v2: `from telethon import TelegramClient` -> compat re-export (aliased to
+# v2's `Client`). All the `client.send_file(...)` calls below route through the
+# compat wrapper, which translates v1 `caption=`/`parse_mode=` kwargs to v2's
+# `caption`/`caption_html` and coerces the integer admin id to a `UserRef`.
+from telethon_compat import TelegramClient
 
 logger = logging.getLogger(__name__)
 
@@ -127,13 +131,19 @@ async def _do_backup(client: TelegramClient) -> None:
                     f"💾 Size: {backup_size / 1024:.1f} KB"
                 )
                 
+                # v2: `send_file(chat, file, *, caption=, parse_mode=, thumb=)`
+                #   -> `send_file(peer, file, *, caption_html=)`.
+                # The compat wrapper coerces the int `ADMIN_USER_ID` to a UserRef
+                # and maps `parse_mode="html"` -> `caption_html=`. v2's send_file
+                # has NO `thumb=` parameter (it derives thumbnails automatically),
+                # so we drop it here to avoid a TypeError. A DB file has no
+                # meaningful thumbnail anyway, so behavior is unchanged.
                 await asyncio.wait_for(
                     client.send_file(
                         ADMIN_USER_ID,
                         backup_path,
                         caption=caption,
                         parse_mode="html",
-                        thumb=None
                     ),
                     timeout=15.0
                 )

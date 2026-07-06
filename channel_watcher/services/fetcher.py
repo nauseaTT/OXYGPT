@@ -1,28 +1,52 @@
 """Fetch messages from Telegram channels via Telethon.
 
-Channel/group resolution uses Telethon's ``get_entity``.  Message
-retrieval uses a **user session** (``_user_client``) — a real Telegram
-account rather than the bot account — so ``iter_messages`` works on any
-public channel the account can see, with no admin requirement.
+Channel/group resolution uses Telethon v2's ``resolve_username`` (for
+``@name``/``t.me/name`` links) or a ``ChannelRef`` built from a stored id.
+Message retrieval uses a **user session** (``_user_client``) — a real
+Telegram account rather than the bot account — so ``get_messages`` works
+on any public channel the account can see, with no admin requirement.
 
 Incremental fetching is driven by the monitor's ``last_message_id``
 high-water mark: each cycle only pulls messages *newer* than the last one
 seen.  This guarantees every post is counted in the activity stats
 exactly once (no double counting) and that busy channels don't silently
 drop posts beyond a fixed window.
+
+v2 migration notes for this file:
+- ``client.get_entity(...)`` was removed. Usernames resolve via
+  ``client.resolve_username(name)``; stored numeric ids are wrapped in a
+  ``ChannelRef`` (no entity cache, no ``-100`` marked ids).
+- ``client.iter_messages(entity, limit=, min_id=)`` -> ``client.get_messages(
+  peer, limit)`` (an awaitable async-iterable). v2's ``get_messages`` has NO
+  ``min_id`` parameter, so the "only newer than last_id" boundary is enforced
+  by filtering ``msg.id > last_id`` in Python (behavior preserved).
+- ``client(JoinChannelRequest(entity))`` -> ``client(
+  tl.functions.channels.join_channel(channel=<InputChannel>))``.
+- v2 high-level peer types: ``Channel`` (broadcast) and ``Group`` (legacy
+  groups *and* supergroups, distinguished by ``.is_megagroup``); there is no
+  separate ``Chat`` type, and ``.title`` is now ``.name``.
 """
 
 import logging
 import re
 from typing import Any, Dict, List, Optional
 
-from telethon import TelegramClient
-from telethon.errors import (
+# v2: `from telethon import TelegramClient` -> compat alias to v2 `Client`.
+# v2: `telethon.errors` is a factory; the compat layer re-exports the concrete
+#     error classes. v2: raw API is private+snake_case, exposed as `tl`.
+# v2: high-level peer types `Channel`/`Group` come from `telethon.types`.
+from telethon_compat import (
+    TelegramClient,
+    tl,
+    channel_ref_from_stored_id,
     ChannelPrivateError,
     UsernameNotOccupiedError,
+    # v2: high-level peer types re-exported by the compat layer (was
+    # `from telethon.types import Channel, Group` — routed through compat so
+    # every Telethon symbol flows through one place).
+    Channel,
+    Group,
 )
-from telethon.tl.functions.channels import JoinChannelRequest
-from telethon.tl.types import Channel, Chat
 
 logger = logging.getLogger(__name__)
 
@@ -60,18 +84,21 @@ class ChannelFetcher:
         if not username:
             return None
         try:
-            entity = await self.client.get_entity(username)
+            # v2: `get_entity(username)` -> `resolve_username(username)`, which
+            #     returns a high-level `Channel`/`Group`/`User` peer.
+            entity = await self.client.resolve_username(username)
         except (UsernameNotOccupiedError, ValueError, ChannelPrivateError):
             return None
         except Exception as exc:
-            logger.warning("get_entity(%s) failed: %s", username, exc)
+            logger.warning("resolve_username(%s) failed: %s", username, exc)
             return None
+        # v2: a broadcast channel is `Channel`; `.title` is now `.name`.
         if not isinstance(entity, Channel) or getattr(entity, "username", None) is None:
             return None
         return {
             "chat_id": entity.id,
             "username": entity.username,
-            "title": getattr(entity, "title", "") or entity.username,
+            "title": getattr(entity, "name", "") or entity.username,
         }
 
     async def validate_group_access(self, group_link: str) -> Optional[Dict[str, Any]]:
@@ -79,24 +106,37 @@ class ChannelFetcher:
         if not username:
             return None
         try:
-            entity = await self.client.get_entity(username)
+            # v2: `get_entity(username)` -> `resolve_username(username)`.
+            entity = await self.client.resolve_username(username)
         except Exception:
             return None
-        # Accept both legacy groups (Chat) and supergroups (megagroup Channel).
-        is_group = isinstance(entity, Chat) or (
-            isinstance(entity, Channel) and getattr(entity, "megagroup", False)
-        )
+        # v2: legacy groups AND supergroups are both the high-level `Group` type
+        #     (distinguished by `.is_megagroup`); there is no separate `Chat`.
+        is_group = isinstance(entity, Group)
         if not is_group:
             return None
         try:
-            await self.client(JoinChannelRequest(entity))
+            # v2: `client(JoinChannelRequest(entity))` ->
+            #     `client(tl.functions.channels.join_channel(channel=<InputChannel>))`.
+            #     `join_channel` only applies to supergroups/channels (a `Group`
+            #     whose `.ref` is a `ChannelRef` with `_to_input_channel()`).
+            #     Public `t.me/...` links are always supergroups, so this covers
+            #     the real-world path. A legacy basic group (`GroupRef`, joined
+            #     by invite only) has no `_to_input_channel`; we skip the join —
+            #     the account must already be a member, matching v1's fallback
+            #     where a failed join was tolerated.
+            ref = entity.ref
+            if hasattr(ref, "_to_input_channel"):
+                await self.client(tl.functions.channels.join_channel(
+                    channel=ref._to_input_channel()
+                ))
         except Exception as exc:
-            logger.warning("JoinChannelRequest(%s) failed: %s", username, exc)
+            logger.warning("join_channel(%s) failed: %s", username, exc)
             return None
         return {
             "chat_id": entity.id,
             "username": getattr(entity, "username", None) or "",
-            "title": getattr(entity, "title", "") or getattr(entity, "username", "") or "",
+            "title": getattr(entity, "name", "") or getattr(entity, "username", "") or "",
         }
 
     # ── Lock-in point (setup flow) ────────────────────────────────────
@@ -111,31 +151,58 @@ class ChannelFetcher:
         back to the baseline-fetch behaviour on the first cycle).
         """
         try:
-            entity = await self.client.get_entity(username_or_chat_id)
+            # v2: resolve to a peer without the removed `get_entity` (see
+            #     `_resolve_ref` which handles both username and stored id).
+            peer = await self._resolve_ref(username_or_chat_id)
         except Exception as exc:
-            logger.warning("get_latest_message_id: get_entity(%r) failed: %s", username_or_chat_id, exc)
+            logger.warning("get_latest_message_id: resolve(%r) failed: %s", username_or_chat_id, exc)
+            return 0
+        if peer is None:
             return 0
         try:
-            async for msg in self.client.iter_messages(entity, limit=1):
+            # v2: `iter_messages(entity, limit=1)` -> `get_messages(peer, 1)`,
+            #     an awaitable async-iterable. The newest message comes first.
+            async for msg in self.client.get_messages(peer, 1):
                 if msg and msg.id:
                     return msg.id
         except Exception as exc:
-            logger.warning("get_latest_message_id: iter_messages(%r) failed: %s", username_or_chat_id, exc)
+            logger.warning("get_latest_message_id: get_messages(%r) failed: %s", username_or_chat_id, exc)
         return 0
+
+    async def _resolve_ref(self, ref: Any) -> Optional[Any]:
+        """Resolve a username string or a stored channel id into a v2 peer/ref.
+
+        v2: `get_entity` is gone. A `str` (with/without `@`) resolves via
+        `resolve_username`; an int (stored channel id, possibly `-100`-marked)
+        becomes a `ChannelRef` directly, which every `get_messages` call accepts.
+        """
+        if ref is None:
+            return None
+        if isinstance(ref, str):
+            name = extract_username(ref) or ref.lstrip("@")
+            return await self.client.resolve_username(name)
+        if isinstance(ref, int):
+            return channel_ref_from_stored_id(ref)
+        # Already a peer/ref.
+        return ref
 
     # ── Message fetching (scheduler) ─────────────────────────────────
 
     async def _resolve_entity(self, monitor: Dict[str, Any]) -> Optional[Any]:
-        """Resolve the channel entity, preferring the stable username."""
+        """Resolve the channel peer, preferring the stable username."""
         username = monitor.get("channel_username")
         chat_id = monitor.get("chat_id")
         for ref in (username, chat_id):
             if not ref:
                 continue
             try:
-                return await self.client.get_entity(ref)
+                # v2: `get_entity(ref)` -> `_resolve_ref(ref)` (username via
+                #     resolve_username, stored id via ChannelRef).
+                peer = await self._resolve_ref(ref)
+                if peer is not None:
+                    return peer
             except Exception as exc:
-                logger.debug("get_entity(%r) failed: %s", ref, exc)
+                logger.debug("resolve(%r) failed: %s", ref, exc)
         logger.warning(
             "Monitor %s: cannot resolve channel %s/%s",
             monitor.get("id"), username, chat_id,
@@ -161,16 +228,22 @@ class ChannelFetcher:
             return []
 
         # First-ever check: establish a baseline from recent posts only.
-        if last_id <= 0:
-            iter_kwargs = {"limit": BASELINE_LIMIT}
-        else:
-            iter_kwargs = {"limit": MAX_PER_CYCLE, "min_id": last_id}
+        # v2: `iter_messages(entity, limit=, min_id=last_id)` -> `get_messages(
+        #     peer, limit)`. v2's `get_messages` has NO `min_id`, so we request
+        #     a bounded number of the most-recent posts and enforce the
+        #     "only newer than last_id" boundary ourselves via `msg.id > last_id`
+        #     below (behaviour preserved). On the first check (last_id<=0) there
+        #     is no boundary, so every returned post is accepted.
+        limit = BASELINE_LIMIT if last_id <= 0 else MAX_PER_CYCLE
 
         collected: List[Dict[str, Any]] = []
         max_seen = last_id
         try:
-            async for msg in self.client.iter_messages(entity, **iter_kwargs):
+            async for msg in self.client.get_messages(entity, limit):
                 if not msg or not msg.id:
+                    continue
+                # v2: manual replacement for the removed `min_id` filter.
+                if last_id > 0 and msg.id <= last_id:
                     continue
                 if msg.id > max_seen:
                     max_seen = msg.id
@@ -191,7 +264,11 @@ class ChannelFetcher:
                 post_date, post_hour = self._msg_date_parts(msg)
                 await db.increment_post_count(monitor_id, post_date, post_hour)
 
-                text = (msg.text or msg.message or "").strip()
+                # v2: v1 exposed both `msg.text` (formatted) and `msg.message`
+                #     (raw). v2 unified these into `msg.text`; the compat layer
+                #     still provides a `.message` alias, so this keeps working,
+                #     but `.text` alone is now the canonical source.
+                text = (msg.text or "").strip()
                 if not text:
                     continue  # media-only / non-text post — stat only
                 if await db.is_message_analyzed(monitor_id, msg.id):
@@ -222,6 +299,10 @@ class ChannelFetcher:
 
     @staticmethod
     def _sender_id(msg: Any) -> Optional[int]:
+        # v2: v1 `msg.sender_id` was removed; the compat layer re-adds it as a
+        #     property returning `msg.sender.id` (an int) or None. The
+        #     `getattr(sender, "user_id", sender)` below is now effectively a
+        #     no-op for the int result but is kept for defensive compatibility.
         sender = msg.sender_id
         if not sender:
             return None
