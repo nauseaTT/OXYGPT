@@ -1,5 +1,7 @@
 from typing import Any, Tuple, List, TYPE_CHECKING
-from telethon import Button
+# v2: `from telethon import Button` -> compat Button facade over the v2
+# button classes (types.Button.Callback/Url/...). See telethon_compat.py.
+from telethon_compat import Button
 
 from ..utils import get_time_until_reset, make_progress_bar
 

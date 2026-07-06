@@ -13,9 +13,17 @@ import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, Set, Optional, Any
 
-from telethon import TelegramClient, events, Button
-from telethon.tl.functions.channels import GetParticipantRequest
-from telethon.errors import UserNotParticipantError
+# v2: Telethon v2 renamed `TelegramClient` -> `Client`, split events from
+# filters, moved the raw API to the private `telethon._tl` (snake_case), and
+# turned `telethon.errors` into a factory. All of that is funneled through the
+# documented `telethon_compat` layer so this module keeps using familiar names
+# (`TelegramClient`, `events`, `Button`) while running on v2. See
+# MIGRATION_NOTES.md and telethon_compat.py.
+from telethon_compat import (
+    TelegramClient, events, Button, tl, filters,
+    UserNotParticipantError,
+    data_regex, text_regex, channel_ref_from_stored_id, user_ref,
+)
 from dotenv import load_dotenv
 
 from api_http import AI_Service, get_service_manager
@@ -88,7 +96,17 @@ class TelegramBot:
         self.bot_token: str = bot_token
 
         self.db: DatabaseManager = DatabaseManager()
-        self.bot: TelegramClient = TelegramClient('bot', self.api_id, self.api_hash)
+        # v2: `TelegramClient('bot', api_id, api_hash)` -> `Client(...)` (aliased).
+        # `check_all_handlers=True` is REQUIRED here to preserve v1 behavior:
+        # v1 ran every matching handler (there was no StopPropagation raised in
+        # this codebase); v2 stops after the first handler whose filter returns
+        # True unless this flag is set. Two catch-all NewMessage(incoming)
+        # handlers (`pending_message_handler` + `inline_handler`) must both run
+        # on the same message, so we opt into running all matching handlers.
+        # (see migration guide: "Behaviour changes in events")
+        self.bot: TelegramClient = TelegramClient(
+            'bot', self.api_id, self.api_hash, check_all_handlers=True
+        )
 
         self.sessions: Dict[int, AI_Service] = {}
         self.processing_users: Set[int] = set()
@@ -558,9 +576,21 @@ class TelegramBot:
 
         async def _check_one(lock: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             try:
-                await self.bot(GetParticipantRequest(
-                    channel=lock["channel_id"],
-                    participant=user_id
+                # v2: v1 `client(GetParticipantRequest(channel=, participant=))`
+                # (public raw request) -> the raw API is now private and
+                # snake_case: `tl.functions.channels.get_participant(...)`. It
+                # takes input-peer objects, so we build them from the stored ids
+                # via PeerRef helpers (the entity cache that v1 relied on no
+                # longer exists in v2). A single-participant lookup keeps the
+                # original O(1)-per-lock cost. `UserNotParticipant` is raised
+                # when the user is not a member.
+                chan_ref = channel_ref_from_stored_id(lock["channel_id"])
+                await self.bot(tl.functions.channels.get_participant(
+                    # get_participant wants an InputChannel for `channel` and an
+                    # InputPeer for `participant`; ChannelRef/UserRef expose the
+                    # right low-level constructors.
+                    channel=chan_ref._to_input_channel(),
+                    participant=user_ref(user_id)._to_input_peer(),
                 ))
                 self.db.log_join(user_id, lock["channel_id"])
                 return None  # joined
@@ -607,7 +637,11 @@ class TelegramBot:
         )
 
         msg = None
-        if isinstance(event, events.CallbackQuery.Event):
+        # v2: `events.CallbackQuery.Event` -> `events.ButtonCallback` (exposed
+        # via the compat facade). Callback events have no reply target, so they
+        # `respond` (send a new message); message events `reply`. Both accept
+        # the v1 `parse_mode=`/`buttons=` kwargs via the compat wrappers.
+        if isinstance(event, events.ButtonCallback):
             msg = await event.respond(text, buttons=buttons, parse_mode="html")
         else:
             msg = await event.reply(text, buttons=buttons, parse_mode="html")
@@ -729,95 +763,119 @@ class TelegramBot:
         handlers (inline buttons), new message handlers (AI processing),
         and inline query handlers. Handler order matters: specific patterns
         are registered before catch-all handlers.
+
+        v2 registration model (see MIGRATION_NOTES.md sec. 4):
+          * `client.on(event_cls, filter)` — events and filters are now
+            SEPARATE. The event class is what the handler receives; the filter
+            is a standalone predicate (combinable with `&`, `|`, `~`).
+          * v1 `events.NewMessage(incoming=True, pattern=P)` becomes
+            `events.NewMessage, filters.Incoming() & text_regex(P)`.
+            `text_regex` (compat) uses `re.match` to reproduce v1's
+            START-anchored matching exactly — v2's built-in `filters.Text`
+            uses `re.search` and would over-match. This preserves the
+            non-ASCII `اکسی` trigger and prefix shortcuts like `/w`, `/sw`.
+          * v1 `events.CallbackQuery(data=b"D")` becomes
+            `events.ButtonCallback, filters.Data(b"D")` (exact bytes match).
+          * v1 `events.CallbackQuery(pattern=P)` becomes
+            `events.ButtonCallback, data_regex(P)` (compat) which runs
+            `re.match(P, data.decode())`, reproducing v1's prefix/lookahead
+            matching. Registration ORDER is preserved verbatim so the
+            negative-lookahead prefix-collision cases below still work.
+          * v2 renamed `events.CallbackQuery` -> `events.ButtonCallback` and it
+            no longer also fires for inline callbacks (a v1 hack); this bot has
+            no inline callback buttons, so that change is a no-op here.
+          * The two catch-all `events.NewMessage(incoming=True)` handlers
+            (`pending_message_handler`, `inline_handler`) both need to run; the
+            client was created with `check_all_handlers=True` (see __init__).
         """
-        self.bot.on(events.NewMessage(incoming=True, pattern="/start|اکسی"))(self.start)
-        self.bot.on(events.NewMessage(incoming=True, pattern="/cancel"))(self.cancel_command)
-        self.bot.on(events.NewMessage(incoming=True, pattern="/arise"))(self.arise_command)
+        self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/start|اکسی"))(self.start)
+        self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/cancel"))(self.cancel_command)
+        self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/arise"))(self.arise_command)
 
-        self.bot.on(events.NewMessage(incoming=True, pattern="/w"))(self.windows_cmd)
-        self.bot.on(events.NewMessage(incoming=True, pattern="/sw"))(self.switch_cmd)
-        self.bot.on(events.NewMessage(incoming=True, pattern="/new"))(self.new_window_cmd)
-        self.bot.on(events.NewMessage(incoming=True, pattern="/clear"))(self.clear_cmd)
-        self.bot.on(events.NewMessage(incoming=True, pattern="/ask"))(self.ask_cmd)
-        self.bot.on(events.NewMessage(incoming=True, pattern="/learn"))(self.learn_cmd)
-        self.bot.on(events.NewMessage(incoming=True, pattern="/code"))(self.code_cmd)
-        self.bot.on(events.NewMessage(incoming=True, pattern="/deep"))(self.deep_cmd)
-        self.bot.on(events.NewMessage(incoming=True, pattern="/micheal"))(self.micheal_cmd)
-        self.bot.on(events.NewMessage(incoming=True, pattern="/daye"))(self.daye_cmd)
-        self.bot.on(events.NewMessage(incoming=True, pattern="/zeussy"))(self.zeussy_cmd)
-        self.bot.on(events.NewMessage(incoming=True, pattern="/albrooks"))(self.albrooks_cmd)
-        self.bot.on(events.NewMessage(incoming=True, pattern="/status"))(self.status_cmd)
-        self.bot.on(events.NewMessage(incoming=True, pattern="/help"))(self.help_cmd)
-        self.bot.on(events.CallbackQuery(data=b"admin_panel"))(self.admin_panel)
-        self.bot.on(events.CallbackQuery(data=b"admin_refresh"))(self.admin_refresh)
-        self.bot.on(events.CallbackQuery(data=b"admin_reset"))(self.admin_reset)
-        self.bot.on(events.CallbackQuery(data=b"admin_export"))(self.admin_export)
-        self.bot.on(events.CallbackQuery(data=b"admin_models"))(self.admin_models)
-        self.bot.on(events.CallbackQuery(data=b"admin_locks"))(self.admin_locks)
-        self.bot.on(events.CallbackQuery(data=b"add_lock_start"))(self.add_lock_start)
-        self.bot.on(events.CallbackQuery(pattern=r"delete_lock:"))(self.delete_lock)
-        self.bot.on(events.CallbackQuery(data=b"check_membership"))(self.check_membership_callback)
-        self.bot.on(events.CallbackQuery(pattern=r"change_model:"))(self.change_model_menu)
-        self.bot.on(events.CallbackQuery(pattern=r"set_model:"))(self.set_model_value)
-        self.bot.on(events.CallbackQuery(data=b"quickask"))(self.quickask_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"skill_toggle:"))(self.skill_toggle_cb)
-        self.bot.on(events.CallbackQuery(data=b"skill_send_message"))(self.skill_send_message_cb)
-        self.bot.on(events.CallbackQuery(data=b"mentors"))(self.mentors_cb)
-        self.bot.on(events.CallbackQuery(data=b"place_holder"))(self.placeholder_cb)
-        self.bot.on(events.CallbackQuery(data=b"limit_countdown"))(self.limit_countdown_cb)
-        self.bot.on(events.CallbackQuery(data=b"help_menu"))(self.help_menu_cb)
+        self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/w"))(self.windows_cmd)
+        self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/sw"))(self.switch_cmd)
+        self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/new"))(self.new_window_cmd)
+        self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/clear"))(self.clear_cmd)
+        self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/ask"))(self.ask_cmd)
+        self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/learn"))(self.learn_cmd)
+        self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/code"))(self.code_cmd)
+        self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/deep"))(self.deep_cmd)
+        self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/micheal"))(self.micheal_cmd)
+        self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/daye"))(self.daye_cmd)
+        self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/zeussy"))(self.zeussy_cmd)
+        self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/albrooks"))(self.albrooks_cmd)
+        self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/status"))(self.status_cmd)
+        self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/help"))(self.help_cmd)
+        self.bot.on(events.ButtonCallback, filters.Data(b"admin_panel"))(self.admin_panel)
+        self.bot.on(events.ButtonCallback, filters.Data(b"admin_refresh"))(self.admin_refresh)
+        self.bot.on(events.ButtonCallback, filters.Data(b"admin_reset"))(self.admin_reset)
+        self.bot.on(events.ButtonCallback, filters.Data(b"admin_export"))(self.admin_export)
+        self.bot.on(events.ButtonCallback, filters.Data(b"admin_models"))(self.admin_models)
+        self.bot.on(events.ButtonCallback, filters.Data(b"admin_locks"))(self.admin_locks)
+        self.bot.on(events.ButtonCallback, filters.Data(b"add_lock_start"))(self.add_lock_start)
+        self.bot.on(events.ButtonCallback, data_regex(r"delete_lock:"))(self.delete_lock)
+        self.bot.on(events.ButtonCallback, filters.Data(b"check_membership"))(self.check_membership_callback)
+        self.bot.on(events.ButtonCallback, data_regex(r"change_model:"))(self.change_model_menu)
+        self.bot.on(events.ButtonCallback, data_regex(r"set_model:"))(self.set_model_value)
+        self.bot.on(events.ButtonCallback, filters.Data(b"quickask"))(self.quickask_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"skill_toggle:"))(self.skill_toggle_cb)
+        self.bot.on(events.ButtonCallback, filters.Data(b"skill_send_message"))(self.skill_send_message_cb)
+        self.bot.on(events.ButtonCallback, filters.Data(b"mentors"))(self.mentors_cb)
+        self.bot.on(events.ButtonCallback, filters.Data(b"place_holder"))(self.placeholder_cb)
+        self.bot.on(events.ButtonCallback, filters.Data(b"limit_countdown"))(self.limit_countdown_cb)
+        self.bot.on(events.ButtonCallback, filters.Data(b"help_menu"))(self.help_menu_cb)
 
-        self.bot.on(events.CallbackQuery(data=b"manage_windows"))(self.manage_windows_cb)
-        self.bot.on(events.CallbackQuery(data=b"create_window_start"))(self.create_window_start_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"set_active_win:"))(self.set_active_win_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"delete_win_req:"))(self.delete_win_req_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"delete_win_confirm:"))(self.delete_win_confirm_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"clear_win_req:"))(self.clear_win_req_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"clear_win_confirm:"))(self.clear_win_confirm_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"clear_win_shortcut:"))(self.clear_win_shortcut_cb)
-        self.bot.on(events.CallbackQuery(data=b"cancel_pending"))(self.cancel_pending_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"rename_win_start:"))(self.rename_win_start_cb)
-        self.bot.on(events.CallbackQuery(data=b"back_to_main"))(self.back_to_main_cb)
+        self.bot.on(events.ButtonCallback, filters.Data(b"manage_windows"))(self.manage_windows_cb)
+        self.bot.on(events.ButtonCallback, filters.Data(b"create_window_start"))(self.create_window_start_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"set_active_win:"))(self.set_active_win_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"delete_win_req:"))(self.delete_win_req_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"delete_win_confirm:"))(self.delete_win_confirm_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"clear_win_req:"))(self.clear_win_req_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"clear_win_confirm:"))(self.clear_win_confirm_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"clear_win_shortcut:"))(self.clear_win_shortcut_cb)
+        self.bot.on(events.ButtonCallback, filters.Data(b"cancel_pending"))(self.cancel_pending_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"rename_win_start:"))(self.rename_win_start_cb)
+        self.bot.on(events.ButtonCallback, filters.Data(b"back_to_main"))(self.back_to_main_cb)
 
-        self.bot.on(events.CallbackQuery(pattern=r"^mentor_"))(self.generic_callback)
-        self.bot.on(events.NewMessage(incoming=True))(self.pending_message_handler)
-        self.bot.on(events.NewMessage(incoming=True))(self.inline_handler)
-        self.bot.on(events.CallbackQuery(pattern="Amentors_"))(self.again_talk_mentor)
-        self.bot.on(events.CallbackQuery(pattern="Aquickask_"))(self.again_talk_quickask)
-        self.bot.on(events.CallbackQuery(pattern="clear_processing"))(self.clear_processing)
+        self.bot.on(events.ButtonCallback, data_regex(r"^mentor_"))(self.generic_callback)
+        self.bot.on(events.NewMessage, filters.Incoming())(self.pending_message_handler)
+        self.bot.on(events.NewMessage, filters.Incoming())(self.inline_handler)
+        self.bot.on(events.ButtonCallback, data_regex("Amentors_"))(self.again_talk_mentor)
+        self.bot.on(events.ButtonCallback, data_regex("Aquickask_"))(self.again_talk_quickask)
+        self.bot.on(events.ButtonCallback, data_regex("clear_processing"))(self.clear_processing)
 
-        self.bot.on(events.CallbackQuery(pattern=r"retry_failed:"))(self.retry_failed_handler)
-        self.bot.on(events.CallbackQuery(pattern=r"select_window_panel:"))(self.select_window_panel_handler)
-        self.bot.on(events.CallbackQuery(pattern=r"switch_window_inline:"))(self.switch_window_inline_handler)
+        self.bot.on(events.ButtonCallback, data_regex(r"retry_failed:"))(self.retry_failed_handler)
+        self.bot.on(events.ButtonCallback, data_regex(r"select_window_panel:"))(self.select_window_panel_handler)
+        self.bot.on(events.ButtonCallback, data_regex(r"switch_window_inline:"))(self.switch_window_inline_handler)
 
-        self.bot.on(events.CallbackQuery(pattern=r"expand:"))(self.expand_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"auto_collapse_toggle:"))(self.auto_collapse_toggle_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"expand:"))(self.expand_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"auto_collapse_toggle:"))(self.auto_collapse_toggle_cb)
 
-        self.bot.on(events.CallbackQuery(pattern=r"admin_toggle_sub:"))(self.admin_toggle_sub_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"admin_reset_user_limit:"))(self.admin_reset_user_limit_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"admin_clear_user_windows:"))(self.admin_clear_user_windows_cb)
-        self.bot.on(events.CallbackQuery(data=b"admin_block_management"))(self.admin_block_management)
-        self.bot.on(events.CallbackQuery(data=b"admin_block_user_start"))(self.admin_block_user_start)
-        self.bot.on(events.CallbackQuery(pattern=r"admin_block_user:"))(self.admin_block_user_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"admin_unblock_user:"))(self.admin_unblock_user_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"admin_bl_unblock_user:"))(self.admin_bl_unblock_user_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"admin_bl_unblock_group:"))(self.admin_bl_unblock_group_cb)
-        self.bot.on(events.CallbackQuery(data=b"admin_block_group_start"))(self.admin_block_group_start)
-        self.bot.on(events.CallbackQuery(data=b"admin_token_leaders"))(self.admin_token_leaders)
+        self.bot.on(events.ButtonCallback, data_regex(r"admin_toggle_sub:"))(self.admin_toggle_sub_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"admin_reset_user_limit:"))(self.admin_reset_user_limit_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"admin_clear_user_windows:"))(self.admin_clear_user_windows_cb)
+        self.bot.on(events.ButtonCallback, filters.Data(b"admin_block_management"))(self.admin_block_management)
+        self.bot.on(events.ButtonCallback, filters.Data(b"admin_block_user_start"))(self.admin_block_user_start)
+        self.bot.on(events.ButtonCallback, data_regex(r"admin_block_user:"))(self.admin_block_user_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"admin_unblock_user:"))(self.admin_unblock_user_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"admin_bl_unblock_user:"))(self.admin_bl_unblock_user_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"admin_bl_unblock_group:"))(self.admin_bl_unblock_group_cb)
+        self.bot.on(events.ButtonCallback, filters.Data(b"admin_block_group_start"))(self.admin_block_group_start)
+        self.bot.on(events.ButtonCallback, filters.Data(b"admin_token_leaders"))(self.admin_token_leaders)
 
         # Provider management handlers
-        self.bot.on(events.CallbackQuery(data=b"admin_providers"))(self.admin_providers)
-        self.bot.on(events.CallbackQuery(pattern=r"set_provider:"))(self.set_provider_cb)
-        self.bot.on(events.CallbackQuery(data=b"admin_openai_config"))(self.admin_openai_config)
-        self.bot.on(events.CallbackQuery(data=b"openai_set_base_url"))(self.openai_set_base_url_start)
-        self.bot.on(events.CallbackQuery(data=b"openai_add_key"))(self.openai_add_key_start)
-        self.bot.on(events.CallbackQuery(data=b"openai_remove_key"))(self.openai_remove_key_menu)
-        self.bot.on(events.CallbackQuery(pattern=r"openai_remove_key_confirm:"))(self.openai_remove_key_confirm)
-        self.bot.on(events.CallbackQuery(data=b"openai_remove_all_keys_confirm"))(self.openai_remove_all_keys_confirm)
-        self.bot.on(events.CallbackQuery(data=b"openai_remove_all_keys"))(self.openai_remove_all_keys)
-        self.bot.on(events.CallbackQuery(pattern=r"openai_custom_model_start:"))(self.openai_custom_model_start)
-        self.bot.on(events.CallbackQuery(data=b"provider_test_connection"))(self.provider_test_connection)
-        self.bot.on(events.CallbackQuery(data=b"provider_token_dashboard"))(self.provider_token_dashboard)
+        self.bot.on(events.ButtonCallback, filters.Data(b"admin_providers"))(self.admin_providers)
+        self.bot.on(events.ButtonCallback, data_regex(r"set_provider:"))(self.set_provider_cb)
+        self.bot.on(events.ButtonCallback, filters.Data(b"admin_openai_config"))(self.admin_openai_config)
+        self.bot.on(events.ButtonCallback, filters.Data(b"openai_set_base_url"))(self.openai_set_base_url_start)
+        self.bot.on(events.ButtonCallback, filters.Data(b"openai_add_key"))(self.openai_add_key_start)
+        self.bot.on(events.ButtonCallback, filters.Data(b"openai_remove_key"))(self.openai_remove_key_menu)
+        self.bot.on(events.ButtonCallback, data_regex(r"openai_remove_key_confirm:"))(self.openai_remove_key_confirm)
+        self.bot.on(events.ButtonCallback, filters.Data(b"openai_remove_all_keys_confirm"))(self.openai_remove_all_keys_confirm)
+        self.bot.on(events.ButtonCallback, filters.Data(b"openai_remove_all_keys"))(self.openai_remove_all_keys)
+        self.bot.on(events.ButtonCallback, data_regex(r"openai_custom_model_start:"))(self.openai_custom_model_start)
+        self.bot.on(events.ButtonCallback, filters.Data(b"provider_test_connection"))(self.provider_test_connection)
+        self.bot.on(events.ButtonCallback, filters.Data(b"provider_token_dashboard"))(self.provider_token_dashboard)
 
         # Service management handlers
         #
@@ -834,33 +892,33 @@ class TelegramBot:
         #
         # The same approach is used for service_remove_key_confirm (line 683)
         # vs service_remove_key (line 684).
-        self.bot.on(events.CallbackQuery(data=b"admin_services"))(self.admin_services)
-        self.bot.on(events.CallbackQuery(data=b"service_create_start"))(self.service_create_start)
-        self.bot.on(events.CallbackQuery(pattern=r"service_edit:"))(self.service_edit)
-        self.bot.on(events.CallbackQuery(pattern=r"service_delete_confirm:"))(self.service_delete_confirm)
-        self.bot.on(events.CallbackQuery(pattern=r"^service_delete:(?!confirm)"))(self.service_delete)
-        self.bot.on(events.CallbackQuery(pattern=r"service_test:"))(self.service_test)
-        self.bot.on(events.CallbackQuery(pattern=r"service_set_url:"))(self.service_set_url_start)
-        self.bot.on(events.CallbackQuery(pattern=r"service_add_key:"))(self.service_add_key_start)
-        self.bot.on(events.CallbackQuery(pattern=r"service_set_model:"))(self.service_set_model_start)
-        self.bot.on(events.CallbackQuery(pattern=r"service_remove_key_confirm:"))(self.service_remove_key_confirm)
+        self.bot.on(events.ButtonCallback, filters.Data(b"admin_services"))(self.admin_services)
+        self.bot.on(events.ButtonCallback, filters.Data(b"service_create_start"))(self.service_create_start)
+        self.bot.on(events.ButtonCallback, data_regex(r"service_edit:"))(self.service_edit)
+        self.bot.on(events.ButtonCallback, data_regex(r"service_delete_confirm:"))(self.service_delete_confirm)
+        self.bot.on(events.ButtonCallback, data_regex(r"^service_delete:(?!confirm)"))(self.service_delete)
+        self.bot.on(events.ButtonCallback, data_regex(r"service_test:"))(self.service_test)
+        self.bot.on(events.ButtonCallback, data_regex(r"service_set_url:"))(self.service_set_url_start)
+        self.bot.on(events.ButtonCallback, data_regex(r"service_add_key:"))(self.service_add_key_start)
+        self.bot.on(events.ButtonCallback, data_regex(r"service_set_model:"))(self.service_set_model_start)
+        self.bot.on(events.ButtonCallback, data_regex(r"service_remove_key_confirm:"))(self.service_remove_key_confirm)
         # ^service_remove_key: — but NOT service_remove_key_confirm:
-        self.bot.on(events.CallbackQuery(pattern=r"^service_remove_key:(?!confirm)"))(self.service_remove_key_menu)
-        self.bot.on(events.CallbackQuery(pattern=r"activate_service:"))(self.activate_service)
-        self.bot.on(events.CallbackQuery(data=b"deactivate_service"))(self.deactivate_service)
+        self.bot.on(events.ButtonCallback, data_regex(r"^service_remove_key:(?!confirm)"))(self.service_remove_key_menu)
+        self.bot.on(events.ButtonCallback, data_regex(r"activate_service:"))(self.activate_service)
+        self.bot.on(events.ButtonCallback, filters.Data(b"deactivate_service"))(self.deactivate_service)
 
         # Channel Watcher classifier model
-        self.bot.on(events.CallbackQuery(data=b"cw_classifier_model"))(self.cw_classifier_model_start)
+        self.bot.on(events.ButtonCallback, filters.Data(b"cw_classifier_model"))(self.cw_classifier_model_start)
 
         # Second verify handlers
-        self.bot.on(events.CallbackQuery(pattern=r"verify_qa_continue:"))(self.verify_qa_continue_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"verify_qa_switch:"))(self.verify_qa_switch_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"verify_qa_new:"))(self.verify_qa_new_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"verify_qa_delete_req:"))(self.verify_qa_delete_req_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"verify_qa_delete_confirm:"))(self.verify_qa_delete_confirm_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"verify_qa_cancel_delete:"))(self.verify_qa_cancel_delete_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"verify_mentor_continue:"))(self.verify_mentor_continue_cb)
-        self.bot.on(events.CallbackQuery(pattern=r"verify_mentor_reset:"))(self.verify_mentor_reset_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"verify_qa_continue:"))(self.verify_qa_continue_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"verify_qa_switch:"))(self.verify_qa_switch_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"verify_qa_new:"))(self.verify_qa_new_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"verify_qa_delete_req:"))(self.verify_qa_delete_req_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"verify_qa_delete_confirm:"))(self.verify_qa_delete_confirm_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"verify_qa_cancel_delete:"))(self.verify_qa_cancel_delete_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"verify_mentor_continue:"))(self.verify_mentor_continue_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"verify_mentor_reset:"))(self.verify_mentor_reset_cb)
 
         self.bot.on(events.InlineQuery)(self.inline_query)
 
@@ -888,7 +946,7 @@ class TelegramBot:
 
                 if next_reset is None:
                     tlogger.warning("Could not determine next reset time. Defaulting to 12 hours.")
-                    seconds_to_wait = 12 * 3600
+                    seconds_to_wait = float(12 * 3600)
                 else:
                     seconds_to_wait = (next_reset - now).total_seconds()
 
@@ -994,8 +1052,18 @@ class TelegramBot:
         except Exception as startup_err:
             tlogger.error(f"Error checking missed reset on startup: {startup_err}")
 
-        await self.bot.start(bot_token=self.bot_token)
-        
+        # v2: `client.start(bot_token=...)` no longer exists. v2 splits startup
+        # into an explicit connect + login. For a bot account we
+        # `connect()` and then `bot_sign_in(token)`. We first check
+        # `is_authorized()` so an already-authenticated session skips the
+        # (network) re-login. NOTE: v1 session files are NOT compatible with v2,
+        # so on the first v2 run the bot will re-authenticate with its token and
+        # rewrite `bot.session` in the v2 format (documented in README).
+        # (see migration guide: "Changes to start and client context-manager")
+        await self.bot.connect()
+        if not await self.bot.is_authorized():
+            await self.bot.bot_sign_in(self.bot_token)
+
         # Set bot client in 503 manager for notifications
         manager_503 = get_global_503_manager()
         if manager_503:
@@ -1018,7 +1086,10 @@ class TelegramBot:
         except Exception as e:
             tlogger.exception("Failed to load Channel Watcher module")
 
-        @self.bot.on(events.CallbackQuery(data=b"close_window_panel"))
+        # v2: `events.CallbackQuery(data=b"...")` -> `events.ButtonCallback`
+        # event type + `filters.Data(b"...")` exact-match filter. The `.on()`
+        # decorator still exists and takes (event_type, filter).
+        @self.bot.on(events.ButtonCallback, filters.Data(b"close_window_panel"))
         async def close_window_panel(event):
             await event.answer("❌ بسته شد", alert=False)
             try:
@@ -1026,6 +1097,11 @@ class TelegramBot:
             except Exception:
                 pass
 
-        self.bot.loop.create_task(self._daily_reset_loop())
-        self.bot.loop.create_task(self._cleanup_stale_data_loop())
+        # v2: there is no `client.loop`. Background tasks are scheduled with
+        # `asyncio.create_task(...)` from within the running event loop (we are
+        # already inside `asyncio.run(bot.run())`). This preserves the two
+        # background loops exactly.
+        # (see migration guide: "Removed client methods and properties")
+        asyncio.create_task(self._daily_reset_loop())
+        asyncio.create_task(self._cleanup_stale_data_loop())
         await self.bot.run_until_disconnected()

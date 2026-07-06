@@ -1,8 +1,11 @@
 import logging
 from typing import Any
 
-from telethon import TelegramClient, events
-from telethon.tl.custom import Button
+# v2: `from telethon import TelegramClient, events` -> compat re-exports.
+# The compat layer aliases `TelegramClient` to v2's `Client`, provides the
+# v2 `events` module, `filters`, and the `data_regex` helper that reproduces
+# v1's `events.CallbackQuery(pattern=...)` regex-matching semantics.
+from telethon_compat import TelegramClient, events, Button, filters, data_regex
 
 from .. import database as db
 from ..services.notification_service import (
@@ -23,8 +26,8 @@ def register_notification_handlers(client: TelegramClient) -> None:
             return await handler(event)
         return wrapper
 
-    client.on(events.CallbackQuery(data=b"tj_notifications"))(wrap(_handle_notifications))
-    client.on(events.CallbackQuery(data=b"tj_daily_summary"))(wrap(_handle_daily_summary))
+    client.on(events.ButtonCallback, filters.Data(b"tj_notifications"))(wrap(_handle_notifications))
+    client.on(events.ButtonCallback, filters.Data(b"tj_daily_summary"))(wrap(_handle_daily_summary))
 
 
 async def _handle_notifications(event: Any) -> None:

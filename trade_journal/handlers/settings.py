@@ -2,8 +2,11 @@ import asyncio
 import logging
 from typing import Any
 
-from telethon import TelegramClient, events
-from telethon.tl.custom import Button
+# v2: `from telethon import TelegramClient, events` -> compat re-exports.
+# The compat layer aliases `TelegramClient` to v2's `Client`, provides the
+# v2 `events` module, `filters`, and the `data_regex` helper that reproduces
+# v1's `events.CallbackQuery(pattern=...)` regex-matching semantics.
+from telethon_compat import TelegramClient, events, Button, filters, data_regex
 
 from .. import database as db
 from ..states import set_state, clear_state, IDLE, SHOWING_SETTINGS, AWAIT_CHANNEL_FORWARD
@@ -24,14 +27,14 @@ def register_settings_handlers(client: TelegramClient) -> None:
             return await handler(event)
         return wrapper
 
-    client.on(events.CallbackQuery(data=b"tj_stats"))(wrap(_handle_stats))
-    client.on(events.CallbackQuery(data=b"tj_settings_channels"))(wrap(_handle_settings_channels))
-    client.on(events.CallbackQuery(pattern=r"tj_channel_info:"))(wrap(_handle_channel_info))
-    client.on(events.CallbackQuery(pattern=r"tj_channel_del:"))(wrap(_handle_channel_delete))
-    client.on(events.CallbackQuery(data=b"tj_privacy_settings"))(wrap(_handle_privacy_settings))
-    client.on(events.CallbackQuery(pattern=r"tj_privacy_mode:"))(wrap(_handle_privacy_mode_set))
-    client.on(events.CallbackQuery(pattern=r"tj_privacy_level:"))(wrap(_handle_privacy_level_set))
-    client.on(events.CallbackQuery(data=b"tj_export_pdf"))(wrap(_handle_export_pdf))
+    client.on(events.ButtonCallback, filters.Data(b"tj_stats"))(wrap(_handle_stats))
+    client.on(events.ButtonCallback, filters.Data(b"tj_settings_channels"))(wrap(_handle_settings_channels))
+    client.on(events.ButtonCallback, data_regex(r"tj_channel_info:"))(wrap(_handle_channel_info))
+    client.on(events.ButtonCallback, data_regex(r"tj_channel_del:"))(wrap(_handle_channel_delete))
+    client.on(events.ButtonCallback, filters.Data(b"tj_privacy_settings"))(wrap(_handle_privacy_settings))
+    client.on(events.ButtonCallback, data_regex(r"tj_privacy_mode:"))(wrap(_handle_privacy_mode_set))
+    client.on(events.ButtonCallback, data_regex(r"tj_privacy_level:"))(wrap(_handle_privacy_level_set))
+    client.on(events.ButtonCallback, filters.Data(b"tj_export_pdf"))(wrap(_handle_export_pdf))
 
 
 async def _handle_stats(event: Any) -> None:

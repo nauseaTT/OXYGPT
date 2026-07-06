@@ -162,6 +162,12 @@ class Gemini503Manager:
             return
             
         try:
+            # v2: `send_message(admin_id, text, parse_mode="html")` is routed
+            # through the telethon_compat client wrapper, which converts the
+            # bare positive `admin_user_id` into a `types.UserRef` (v2 removed
+            # the entity cache, so a raw id must be wrapped in a PeerRef) and
+            # maps `parse_mode="html"` to the v2 `html=` keyword. No change to
+            # this call site is needed thanks to the compat layer.
             await self._bot_client.send_message(
                 self.admin_user_id,
                 message,

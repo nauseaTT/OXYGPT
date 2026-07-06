@@ -1,8 +1,11 @@
 import logging
 from typing import Any, List, Dict, Set
 
-from telethon import TelegramClient, events
-from telethon.tl.custom import Button
+# v2: `from telethon import TelegramClient, events` -> compat re-exports.
+# The compat layer aliases `TelegramClient` to v2's `Client`, provides the
+# v2 `events` module, `filters`, and the `data_regex` helper that reproduces
+# v1's `events.CallbackQuery(pattern=...)` regex-matching semantics.
+from telethon_compat import TelegramClient, events, Button, filters, data_regex
 
 from .. import database as db
 from ..states import set_state, get_state_str, get_state_data, clear_state, update_state_data
@@ -24,15 +27,15 @@ def register_bulk_handlers(client: TelegramClient) -> None:
             return await handler(event)
         return wrapper
 
-    client.on(events.CallbackQuery(data=b"tj_bulk_mode"))(wrap(_handle_bulk_mode))
-    client.on(events.CallbackQuery(data=b"tj_bulk_select_toggle"))(wrap(_handle_bulk_select_toggle))
-    client.on(events.CallbackQuery(pattern=r"tj_bulk_toggle:"))(wrap(_handle_bulk_toggle))
-    client.on(events.CallbackQuery(data=b"tj_bulk_delete"))(wrap(_handle_bulk_delete))
-    client.on(events.CallbackQuery(data=b"tj_bulk_tag"))(wrap(_handle_bulk_tag))
-    client.on(events.CallbackQuery(data=b"tj_bulk_export"))(wrap(_handle_bulk_export))
-    client.on(events.CallbackQuery(data=b"tj_bulk_select_all"))(wrap(_handle_bulk_select_all))
-    client.on(events.CallbackQuery(data=b"tj_bulk_deselect_all"))(wrap(_handle_bulk_deselect_all))
-    client.on(events.CallbackQuery(data=b"tj_bulk_confirm_delete"))(wrap(_handle_bulk_confirm_delete))
+    client.on(events.ButtonCallback, filters.Data(b"tj_bulk_mode"))(wrap(_handle_bulk_mode))
+    client.on(events.ButtonCallback, filters.Data(b"tj_bulk_select_toggle"))(wrap(_handle_bulk_select_toggle))
+    client.on(events.ButtonCallback, data_regex(r"tj_bulk_toggle:"))(wrap(_handle_bulk_toggle))
+    client.on(events.ButtonCallback, filters.Data(b"tj_bulk_delete"))(wrap(_handle_bulk_delete))
+    client.on(events.ButtonCallback, filters.Data(b"tj_bulk_tag"))(wrap(_handle_bulk_tag))
+    client.on(events.ButtonCallback, filters.Data(b"tj_bulk_export"))(wrap(_handle_bulk_export))
+    client.on(events.ButtonCallback, filters.Data(b"tj_bulk_select_all"))(wrap(_handle_bulk_select_all))
+    client.on(events.ButtonCallback, filters.Data(b"tj_bulk_deselect_all"))(wrap(_handle_bulk_deselect_all))
+    client.on(events.ButtonCallback, filters.Data(b"tj_bulk_confirm_delete"))(wrap(_handle_bulk_confirm_delete))
 
 
 def _get_user_selection(uid: int) -> Set[int]:

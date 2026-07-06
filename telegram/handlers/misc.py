@@ -1,6 +1,8 @@
 import asyncio
 from typing import Any, TYPE_CHECKING
-from telethon import Button
+# v2: `from telethon import Button` -> compat Button facade over the v2
+# button classes (types.Button.Callback/Url/...). See telethon_compat.py.
+from telethon_compat import Button
 
 if TYPE_CHECKING:
     from ..bot import TelegramBot
@@ -92,6 +94,10 @@ async def inline_query(self: "TelegramBot", event: Any) -> None:
     if not_joined:
         return
 
+    # v2: `events.InlineQuery` in 2.0.0a0 does not yet ship the v1 helpers
+    # `event.text`, `event.sender_id`, `event.builder.article(...)` and
+    # `event.answer(results)`. The compat layer re-adds them using the raw
+    # `messages.set_inline_bot_results` request, so this handler is unchanged.
     query = event.text + "\n"
     await event.answer([
         event.builder.article(title=title, text=query + id, description=description)

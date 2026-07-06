@@ -1,6 +1,8 @@
 import random
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
-from telethon import Button
+# v2: `from telethon import Button` -> compat Button facade over the v2
+# button classes (types.Button.Callback/Url/...). See telethon_compat.py.
+from telethon_compat import Button
 
 from skills import SKILLS, get_skill
 
@@ -249,6 +251,9 @@ async def resolve_reply_chain(
     image_found: bool = False
     current = event
 
+    # v2: `is_reply`/`get_reply_message()` are provided by the compat shims,
+    # which map to v2's `replied_message_id`/`get_replied_message()`. Walking
+    # the reply chain hop-by-hop is unchanged.
     for _ in range(max_hops):
         if not current.is_reply:
             break

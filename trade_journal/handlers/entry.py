@@ -2,8 +2,11 @@ import logging
 import asyncio
 from typing import Any, List, Optional, Dict
 
-from telethon import TelegramClient, events
-from telethon.tl.custom import Button
+# v2: `from telethon import TelegramClient, events` -> compat re-exports.
+# The compat layer aliases `TelegramClient` to v2's `Client`, provides the
+# v2 `events` module, `filters`, and the `data_regex` helper that reproduces
+# v1's `events.CallbackQuery(pattern=...)` regex-matching semantics.
+from telethon_compat import TelegramClient, events, Button, filters, data_regex, photo_dedup_key
 
 from .. import database as db
 from ..states import (
@@ -57,37 +60,41 @@ def _parse_callback_int(event: Any, idx: int = 1) -> Optional[int]:
 
 
 def register_entry_handlers(client: TelegramClient) -> None:
-    client.on(events.CallbackQuery(data=b"tj_panel"))(_handle_tj_panel)
-    client.on(events.CallbackQuery(data=b"trading_ai_panel"))(_handle_trading_ai_panel)
-    client.on(events.CallbackQuery(data=b"tj_back_journal"))(_handle_back_journal)
-    client.on(events.CallbackQuery(data=b"tj_new_trade"))(_handle_new_trade)
-    client.on(events.CallbackQuery(data=b"tj_templates"))(_handle_templates)
-    client.on(events.CallbackQuery(data=b"tj_symbols"))(_handle_symbols_menu)
-    client.on(events.CallbackQuery(data=b"tj_settings"))(_handle_settings_menu)
-    client.on(events.CallbackQuery(data=b"tj_exit"))(_handle_exit)
-    client.on(events.CallbackQuery(data=b"tj_export"))(_handle_export)
-    client.on(events.CallbackQuery(data=b"tj_trades_list"))(_handle_trades_list)
-    client.on(events.CallbackQuery(pattern=r"tj_trade_view:"))(_handle_trade_view)
-    client.on(events.CallbackQuery(pattern=r"tj_trade_del:"))(_handle_trade_delete)
-    client.on(events.CallbackQuery(pattern=r"tj_confirm_delete_trade:"))(_handle_trade_confirm_delete)
-    client.on(events.CallbackQuery(pattern=r"tj_trades_page:"))(_handle_trades_page)
-    client.on(events.CallbackQuery(pattern=r"tj_trade_edit:"))(_handle_trade_edit)
-    client.on(events.CallbackQuery(data=b"tj_group_stats"))(_handle_group_stats)
-    client.on(events.CallbackQuery(data=b"tj_group_quick_trade"))(_handle_group_quick_trade)
-    client.on(events.CallbackQuery(data=b"tj_group_templates"))(_handle_group_templates)
-    client.on(events.CallbackQuery(data=b"tj_group_search"))(_handle_group_search)
-    client.on(events.CallbackQuery(data=b"tj_group_help"))(_handle_group_help)
-    client.on(events.CallbackQuery(data=b"tj_detailed_analysis"))(_handle_detailed_analysis)
-    client.on(events.CallbackQuery(pattern=r"tj_ch_edit:"))(_handle_channel_edit)
-    client.on(events.CallbackQuery(pattern=r"tj_ch_delete:"))(_handle_channel_delete)
-    client.on(events.CallbackQuery(pattern=r"tj_ch_analysis:"))(_handle_channel_analysis)
-    client.on(events.CallbackQuery(data=b"placeholder_header"))(_handle_placeholder)
-    client.on(events.CallbackQuery(data=b"placeholder_section"))(_handle_placeholder)
-    client.on(events.CallbackQuery(data=b"placeholder_limit"))(_handle_placeholder)
-    client.on(events.CallbackQuery(data=b"placeholder_default"))(_handle_placeholder)
-    client.on(events.CallbackQuery(data=b"placeholder_trade_info"))(_handle_placeholder)
-    client.on(events.CallbackQuery(data=b"placeholder_photo"))(_handle_placeholder)
-    client.on(events.NewMessage(incoming=True))(_handle_message_router)
+    client.on(events.ButtonCallback, filters.Data(b"tj_panel"))(_handle_tj_panel)
+    client.on(events.ButtonCallback, filters.Data(b"trading_ai_panel"))(_handle_trading_ai_panel)
+    client.on(events.ButtonCallback, filters.Data(b"tj_back_journal"))(_handle_back_journal)
+    client.on(events.ButtonCallback, filters.Data(b"tj_new_trade"))(_handle_new_trade)
+    client.on(events.ButtonCallback, filters.Data(b"tj_templates"))(_handle_templates)
+    client.on(events.ButtonCallback, filters.Data(b"tj_symbols"))(_handle_symbols_menu)
+    client.on(events.ButtonCallback, filters.Data(b"tj_settings"))(_handle_settings_menu)
+    client.on(events.ButtonCallback, filters.Data(b"tj_exit"))(_handle_exit)
+    client.on(events.ButtonCallback, filters.Data(b"tj_export"))(_handle_export)
+    client.on(events.ButtonCallback, filters.Data(b"tj_trades_list"))(_handle_trades_list)
+    client.on(events.ButtonCallback, data_regex(r"tj_trade_view:"))(_handle_trade_view)
+    client.on(events.ButtonCallback, data_regex(r"tj_trade_del:"))(_handle_trade_delete)
+    client.on(events.ButtonCallback, data_regex(r"tj_confirm_delete_trade:"))(_handle_trade_confirm_delete)
+    client.on(events.ButtonCallback, data_regex(r"tj_trades_page:"))(_handle_trades_page)
+    client.on(events.ButtonCallback, data_regex(r"tj_trade_edit:"))(_handle_trade_edit)
+    client.on(events.ButtonCallback, filters.Data(b"tj_group_stats"))(_handle_group_stats)
+    client.on(events.ButtonCallback, filters.Data(b"tj_group_quick_trade"))(_handle_group_quick_trade)
+    client.on(events.ButtonCallback, filters.Data(b"tj_group_templates"))(_handle_group_templates)
+    client.on(events.ButtonCallback, filters.Data(b"tj_group_search"))(_handle_group_search)
+    client.on(events.ButtonCallback, filters.Data(b"tj_group_help"))(_handle_group_help)
+    client.on(events.ButtonCallback, filters.Data(b"tj_detailed_analysis"))(_handle_detailed_analysis)
+    client.on(events.ButtonCallback, data_regex(r"tj_ch_edit:"))(_handle_channel_edit)
+    client.on(events.ButtonCallback, data_regex(r"tj_ch_delete:"))(_handle_channel_delete)
+    client.on(events.ButtonCallback, data_regex(r"tj_ch_analysis:"))(_handle_channel_analysis)
+    client.on(events.ButtonCallback, filters.Data(b"placeholder_header"))(_handle_placeholder)
+    client.on(events.ButtonCallback, filters.Data(b"placeholder_section"))(_handle_placeholder)
+    client.on(events.ButtonCallback, filters.Data(b"placeholder_limit"))(_handle_placeholder)
+    client.on(events.ButtonCallback, filters.Data(b"placeholder_default"))(_handle_placeholder)
+    client.on(events.ButtonCallback, filters.Data(b"placeholder_trade_info"))(_handle_placeholder)
+    client.on(events.ButtonCallback, filters.Data(b"placeholder_photo"))(_handle_placeholder)
+    # v2: `events.NewMessage(incoming=True)` (event+filter fused in one call) ->
+    #     `events.NewMessage` as the event type plus a separate `filters.Incoming()`
+    #     filter. v2 requires the event class and the filter as two arguments to
+    #     `client.on(...)`; the `NewMessage` class has no public constructor.
+    client.on(events.NewMessage, filters.Incoming())(_handle_message_router)
 
 
 async def _handle_placeholder(event: Any) -> None:
@@ -945,7 +952,13 @@ async def _handle_message_router(event: Any) -> None:
                             update_state_data(uid, photos=photos)
                             await event.reply(f"✅ عکس #{replace_idx+1} با موفقیت جتگیری شد.")
                     else:
-                        if photo_obj.id not in [p.id for p in photos if hasattr(p, 'id')]:
+                        # v2: v1 de-duplicated photos by `photo.id`, but v2's
+                        # `event.photo` is a `File` with no `.id`. `photo_dedup_key`
+                        # derives a stable identity from the file's internal
+                        # input-media (unique per photo), preserving the same
+                        # "don't add the same photo twice" behavior.
+                        existing_keys = [photo_dedup_key(p) for p in photos]
+                        if photo_dedup_key(photo_obj) not in existing_keys:
                             photos.append(photo_obj)
                             update_state_data(uid, photos=photos)
                             count = len(photos)

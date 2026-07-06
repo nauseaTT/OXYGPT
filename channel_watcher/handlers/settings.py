@@ -8,7 +8,9 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
-from telethon import TelegramClient, events, Button
+# v2: `from telethon import TelegramClient, events, Button` -> compat re-exports
+# plus `filters`/`data_regex` for the split event+filter registration model.
+from telethon_compat import TelegramClient, events, Button, filters, data_regex
 
 from ..database import (
     get_monitor,
@@ -158,7 +160,7 @@ def register_settings_handlers(client: TelegramClient, bot_instance: Any, user_c
     DELETE_CONF_RE = r"^cw_delete_confirm_\d+$"
     STATS_RE = r"^cw_stats_\d+$"
 
-    @client.on(events.CallbackQuery(pattern=SHOW_SETTINGS_RE))
+    @client.on(events.ButtonCallback, data_regex(SHOW_SETTINGS_RE))
     async def cw_show_settings(event):
         monitor = await _owned_monitor(event)
         if not monitor:
@@ -180,7 +182,7 @@ def register_settings_handlers(client: TelegramClient, bot_instance: Any, user_c
         kb = settings_keyboard(monitor, sub_type)
         await safe_edit(event, text, buttons=kb, parse_mode="html")
 
-    @client.on(events.CallbackQuery(pattern=INTERVAL_RE))
+    @client.on(events.ButtonCallback, data_regex(INTERVAL_RE))
     async def cw_set_interval_start(event):
         """Show quick interval presets (paid)."""
         monitor = await _owned_monitor(event)
@@ -198,7 +200,7 @@ def register_settings_handlers(client: TelegramClient, bot_instance: Any, user_c
         )
         await safe_edit(event, text, buttons=interval_presets_keyboard(monitor_id, current), parse_mode="html")
 
-    @client.on(events.CallbackQuery(pattern=r"^cw_setint_\d+_\d+$"))
+    @client.on(events.ButtonCallback, data_regex(r"^cw_setint_\d+_\d+$"))
     async def cw_set_interval_preset(event):
         """Apply a one-tap interval preset."""
         monitor = await _owned_monitor(event)
@@ -227,7 +229,7 @@ def register_settings_handlers(client: TelegramClient, bot_instance: Any, user_c
             fallback_reply=False,
         )
 
-    @client.on(events.CallbackQuery(pattern=r"^cw_interval_custom_\d+$"))
+    @client.on(events.ButtonCallback, data_regex(r"^cw_interval_custom_\d+$"))
     async def cw_set_interval_custom(event):
         """Fall back to typing a custom interval value."""
         monitor = await _owned_monitor(event)
@@ -245,7 +247,7 @@ def register_settings_handlers(client: TelegramClient, bot_instance: Any, user_c
         )
         await safe_edit(event, text, buttons=back_keyboard(f"cw_settings_{monitor_id}"), parse_mode="html")
 
-    @client.on(events.CallbackQuery(pattern=PROMPT_RE))
+    @client.on(events.ButtonCallback, data_regex(PROMPT_RE))
     async def cw_set_prompt_start(event):
         monitor = await _owned_monitor(event)
         if not monitor:
@@ -278,7 +280,7 @@ def register_settings_handlers(client: TelegramClient, bot_instance: Any, user_c
         )
         await safe_edit(event, guide, buttons=back_keyboard(f"cw_settings_{monitor_id}"), parse_mode="html")
 
-    @client.on(events.CallbackQuery(pattern=IMPORTANCE_RE))
+    @client.on(events.ButtonCallback, data_regex(IMPORTANCE_RE))
     async def cw_toggle_importance(event):
         monitor = await _owned_monitor(event)
         if not monitor:
@@ -299,7 +301,7 @@ def register_settings_handlers(client: TelegramClient, bot_instance: Any, user_c
             fallback_reply=False,
         )
 
-    @client.on(events.CallbackQuery(pattern=PAUSE_RE))
+    @client.on(events.ButtonCallback, data_regex(PAUSE_RE))
     async def cw_toggle_pause(event):
         monitor = await _owned_monitor(event)
         if not monitor:
@@ -326,7 +328,7 @@ def register_settings_handlers(client: TelegramClient, bot_instance: Any, user_c
                 fallback_reply=False,
             )
 
-    @client.on(events.CallbackQuery(pattern=DELETE_REQ_RE))
+    @client.on(events.ButtonCallback, data_regex(DELETE_REQ_RE))
     async def cw_delete_request(event):
         monitor = await _owned_monitor(event)
         if not monitor:
@@ -343,7 +345,7 @@ def register_settings_handlers(client: TelegramClient, bot_instance: Any, user_c
             parse_mode="html",
         )
 
-    @client.on(events.CallbackQuery(pattern=DELETE_CONF_RE))
+    @client.on(events.ButtonCallback, data_regex(DELETE_CONF_RE))
     async def cw_delete_confirm(event):
         monitor = await _owned_monitor(event)
         if not monitor:
@@ -356,7 +358,7 @@ def register_settings_handlers(client: TelegramClient, bot_instance: Any, user_c
         stop_monitor_task(monitor_id)
         await safe_edit(event, "✅ مونیتور با موفقیت حذف شد.", buttons=empty_monitors_keyboard())
 
-    @client.on(events.CallbackQuery(pattern=STATS_RE))
+    @client.on(events.ButtonCallback, data_regex(STATS_RE))
     async def cw_show_stats(event):
         monitor = await _owned_monitor(event)
         if not monitor:
@@ -371,7 +373,7 @@ def register_settings_handlers(client: TelegramClient, bot_instance: Any, user_c
         )
         await safe_edit(event, text, buttons=stats_back_keyboard(monitor_id), parse_mode="html")
 
-    @client.on(events.CallbackQuery(pattern=r"^cw_history_\d+$"))
+    @client.on(events.ButtonCallback, data_regex(r"^cw_history_\d+$"))
     async def cw_show_history(event):
         monitor = await _owned_monitor(event)
         if not monitor:
@@ -381,7 +383,7 @@ def register_settings_handlers(client: TelegramClient, bot_instance: Any, user_c
         text = format_history_text(monitor.get("channel_title", ""), analyses)
         await safe_edit(event, text, buttons=history_keyboard(monitor_id), parse_mode="html")
 
-    @client.on(events.CallbackQuery(pattern=r"^cw_check_now_\d+$"))
+    @client.on(events.ButtonCallback, data_regex(r"^cw_check_now_\d+$"))
     async def cw_check_now(event):
         monitor = await _owned_monitor(event)
         if not monitor:

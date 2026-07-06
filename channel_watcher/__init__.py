@@ -17,7 +17,10 @@ import os
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from telethon import TelegramClient
+# v2: `from telethon import TelegramClient` -> compat re-export (aliased to
+# v2's `Client`). The user-session login below also uses v2's connect/
+# request_login_code/sign_in flow instead of the removed `client.start(...)`.
+from telethon_compat import TelegramClient
 
 try:
     from zoneinfo import ZoneInfo
@@ -314,10 +317,30 @@ async def register_handlers(client: TelegramClient, bot_instance: Any, user_clie
             if not phone:
                 raise ValueError("CW_USER_PHONE must be set in .env")
             _user_client = TelegramClient("channel_watcher_user", api_id, api_hash)
-            await _user_client.start(
-                phone=phone,
-                code_callback=lambda: input("🔑 Telegram code for Channel Watcher: "),
-            )
+            # v2: `client.start(phone=, code_callback=)` was removed. The
+            #     user-account login is now an explicit flow:
+            #       connect() -> is_authorized()?  -> request_login_code(phone)
+            #       -> sign_in(token, code)  [-> check_password() if 2FA].
+            #     An already-authorised .session skips straight past sign-in, so
+            #     interactive input is only requested on a genuine first login.
+            #     NOTE: existing v1 .session files are NOT compatible with v2 and
+            #     must be re-created once (a fresh code prompt on first v2 run).
+            await _user_client.connect()
+            if not await _user_client.is_authorized():
+                # v2: request a login code, then read it interactively (same UX
+                #     as v1's `code_callback`).
+                login_token = await _user_client.request_login_code(phone)
+                code = input("🔑 Telegram code for Channel Watcher: ").strip()
+                result = await _user_client.sign_in(login_token, code)
+                # v2: `sign_in` returns a `PasswordToken` instead of a `User`
+                #     when the account has 2FA enabled; complete it with the
+                #     password from the environment (falls back to a prompt).
+                from telethon._impl.client.types.password_token import PasswordToken
+                if isinstance(result, PasswordToken):
+                    password = os.environ.get("CW_USER_PASSWORD", "") or input(
+                        "🔒 2FA password for Channel Watcher: "
+                    )
+                    await _user_client.check_password(result, password)
             logger.info("Channel Watcher user client started successfully")
         except Exception as exc:
             logger.critical("Failed to start Channel Watcher user client: %s", exc)

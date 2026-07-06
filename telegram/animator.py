@@ -21,8 +21,17 @@ import time
 import logging
 from typing import Any, Optional, List, Dict
 
-from telethon import Button
-from telethon.errors import FloodWaitError, MessageIdInvalidError, BadRequestError, MessageNotModifiedError
+# v2: `from telethon import Button` (v1) provided a single Button type with
+# factory methods; v2 splits buttons into subclasses. `from telethon.errors
+# import X` (v1) imported concrete classes from a module; v2 turned
+# `telethon.errors` into a factory. Both come through telethon_compat, which
+# provides the v1-compatible `Button` facade and the v2 error classes under the
+# familiar `*Error` names. NOTE: v2 renamed `FloodWaitError.seconds` -> `.value`
+# (handled at the call sites below).
+from telethon_compat import (
+    Button,
+    FloodWaitError, MessageIdInvalidError, BadRequestError, MessageNotModifiedError,
+)
 
 from .constants import (
     ToolEvent,
@@ -273,8 +282,10 @@ class StatusAnimator:
             except asyncio.CancelledError:
                 break
             except FloodWaitError as e:
-                tlogger.warning(f"StatusAnimator: FloodWaitError, waiting {e.seconds}s")
-                await asyncio.sleep(e.seconds + 1)
+                # v2: `FloodWaitError.seconds` was removed; the wait time (in
+                # seconds) is now `.value` (see migration guide: errors).
+                tlogger.warning(f"StatusAnimator: FloodWaitError, waiting {e.value}s")
+                await asyncio.sleep(e.value + 1)
             except (MessageIdInvalidError, BadRequestError):
                 tlogger.info("StatusAnimator: message deleted, stopping")
                 self.is_running = False

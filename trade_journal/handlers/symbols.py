@@ -1,7 +1,10 @@
 import logging
 from typing import Any
 
-from telethon import TelegramClient, events
+# v2: `from telethon import TelegramClient, events` -> compat re-exports.
+# TelegramClient is aliased to v2's `Client`; `data_regex` reproduces v1's
+# `events.CallbackQuery(pattern=...)` regex semantics under v2 filters.
+from telethon_compat import TelegramClient, events, filters, data_regex
 
 from .. import database as db
 from ..states import (
@@ -26,10 +29,10 @@ def register_symbol_handlers(client: TelegramClient) -> None:
             return await handler(event)
         return wrapper
 
-    client.on(events.CallbackQuery(data=b"tj_sym_add"))(wrap(_handle_sym_add))
-    client.on(events.CallbackQuery(pattern=r"tj_sym_del:"))(wrap(_handle_sym_del))
-    client.on(events.CallbackQuery(data=b"tj_back_symbols"))(wrap(_handle_back_symbols))
-    client.on(events.CallbackQuery(pattern=r"tj_sym_info:"))(wrap(_handle_sym_info))
+    client.on(events.ButtonCallback, filters.Data(b"tj_sym_add"))(wrap(_handle_sym_add))
+    client.on(events.ButtonCallback, data_regex(r"tj_sym_del:"))(wrap(_handle_sym_del))
+    client.on(events.ButtonCallback, filters.Data(b"tj_back_symbols"))(wrap(_handle_back_symbols))
+    client.on(events.ButtonCallback, data_regex(r"tj_sym_info:"))(wrap(_handle_sym_info))
 
 
 async def _handle_sym_add(event: Any) -> None:
@@ -68,7 +71,7 @@ async def _handle_sym_del(event: Any) -> None:
             parse_mode="html"
         )
     else:
-        from telethon.tl.custom import Button
+        from telethon_compat import Button  # v2: buttons module via compat
         await event.edit(
             "✅ نماد حذف شد.\n\nهیچ نمادی ندارید.",
             buttons=[

@@ -26,7 +26,9 @@ Pool isolation
 import json
 from datetime import datetime, timedelta
 from typing import Any, Optional, List, Dict, TYPE_CHECKING
-from telethon import Button
+# v2: `from telethon import Button` -> compat Button facade over the v2
+# button classes (types.Button.Callback/Url/...). See telethon_compat.py.
+from telethon_compat import Button
 
 if TYPE_CHECKING:
     from ..bot import TelegramBot

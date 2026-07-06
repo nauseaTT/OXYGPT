@@ -2,7 +2,8 @@ import random
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from telethon import Button
+# v2: Button via the compat facade (v2 button classes). See telethon_compat.py.
+from telethon_compat import Button
 
 if TYPE_CHECKING:
     from ..bot import TelegramBot
@@ -230,6 +231,8 @@ async def arise_command(self: "TelegramBot", event: object) -> None:
     if uid not in self.admin_ids:
         return
 
+    # v2: `is_reply`/`get_reply_message()`/`sender_id` come via the compat
+    # shims (v2 uses `replied_message_id`/`get_replied_message()`/`sender.id`).
     if not event.is_reply:
         await event.reply("احمق این پیامو باید رو یکی ریپلای کنی")
         return
@@ -292,8 +295,13 @@ async def send_user_management_panel(self: "TelegramBot", event: object, target_
         ]
     ]
 
-    from telethon import events as telethon_events
-    if isinstance(event, telethon_events.CallbackQuery.Event):
+    # v2: `events.CallbackQuery.Event` -> `events.ButtonCallback`. The compat
+    # layer exposes `events.CallbackQuery.Event` as an alias for isinstance
+    # checks; we use the direct v2 type here for clarity. Callback events edit
+    # the message in place; message events reply. Both `.edit`/`.reply` accept
+    # v1 `parse_mode=`/`buttons=` via the compat wrappers.
+    from telethon_compat import events as telethon_events
+    if isinstance(event, telethon_events.ButtonCallback):
         await event.edit(text, buttons=buttons, parse_mode="html")
     else:
         await event.reply(text, buttons=buttons, parse_mode="html")

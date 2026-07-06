@@ -5,7 +5,9 @@ with other modules (trade journal uses ``tj_``, main bot uses bare
 labels such as ``back_to_main``).
 """
 
-from telethon import Button
+# v2: v1 `telethon.Button` factory -> compat `Button` shim, which builds v2
+# `telethon.types.buttons.*` instances (Callback/Url/...) under the hood.
+from telethon_compat import Button
 from typing import Any, Dict, List, Optional
 
 
