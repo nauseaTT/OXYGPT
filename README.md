@@ -1,376 +1,456 @@
-# OXYGPT — Telegram AI Assistant
+<div align="center">
 
-A production-grade Telegram bot powered by Google Gemini and OpenAI-compatible APIs, featuring multi-mentor trading personas, tool-calling (web search, image generation, market data, HTML booklets), multi-window conversations, trade journaling, and smart-classification channel monitoring.
+# OXYGPT
 
-> **Built on Telethon v2 (`2.0.0a0`).** This project targets the full Telethon
-> v2 rewrite, not the PyPI-published v1 line. v2 is a substantial API change
-> (explicit connect/login, `PeerRef` entities, separated events & filters,
-> single-file `send_file`, per-call parse-mode, and more). All Telethon symbols
-> are imported through the in-repo compatibility layer `telethon_compat.py`,
-> which re-exports v2 under familiar names and smooths over the differences.
-> See [Telethon v2 Notes](#telethon-v2-notes) and `MIGRATION_NOTES.md` for the
-> full story, and note the **[session re-login requirement](#telethon-v2-notes)**
-> the first time you run on v2.
+### A production-grade Telegram assistant for traders — intelligent conversation, market analysis, and content generation in one bot.
+
+<p>
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white">
+  <img alt="Telethon" src="https://img.shields.io/badge/Telethon-v2%20(2.0.0a0)-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white">
+  <img alt="Google Gemini" src="https://img.shields.io/badge/Google%20Gemini-primary-4285F4?style=for-the-badge&logo=googlegemini&logoColor=white">
+  <img alt="OpenAI-compatible" src="https://img.shields.io/badge/OpenAI--compatible-fallback-412991?style=for-the-badge&logo=openai&logoColor=white">
+  <img alt="SQLite" src="https://img.shields.io/badge/SQLite-persistence-003B57?style=for-the-badge&logo=sqlite&logoColor=white">
+</p>
+
+<p>
+  <img alt="Async" src="https://img.shields.io/badge/architecture-async%20first-1f6feb?style=flat-square">
+  <img alt="Modular" src="https://img.shields.io/badge/design-modular%20%26%20layered-2ea043?style=flat-square">
+  <img alt="Multilingual" src="https://img.shields.io/badge/UI-Persian%20first-e3116c?style=flat-square">
+  <img alt="Tools" src="https://img.shields.io/badge/tools-search%20%7C%20image%20%7C%20market%20%7C%20booklet-8957e5?style=flat-square">
+</p>
+
+<sub>Multi-provider generative engine · 4 trading-mentor personas · 4 quick-ask skills · tool-calling · multi-window memory · trade journal · smart channel monitoring</sub>
+
+</div>
 
 ---
 
 ## Table of Contents
 
-- [Features](#features)
-- [Architecture](#architecture)
+<table>
+<tr>
+<td valign="top">
+
+**Overview**
+- [What is OXYGPT?](#what-is-oxygpt)
+- [Highlights](#highlights)
+- [Feature Matrix](#feature-matrix)
+- [At a Glance](#at-a-glance)
+
+**Architecture**
+- [System Architecture](#system-architecture)
+- [Request Lifecycle](#request-lifecycle)
+- [Design Principles](#design-principles)
 - [Directory Structure](#directory-structure)
+
+</td>
+<td valign="top">
+
+**Operate**
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Running the Bot](#running-the-bot)
-- [Available Scripts](#available-scripts)
-- [Development Workflow](#development-workflow)
-- [AI Providers](#ai-providers)
-- [Conversation Modes](#conversation-modes)
-- [Tools](#tools)
+
+**Capabilities**
+- [Generative Engine](#generative-engine)
+- [Conversation Model](#conversation-model)
+- [The Tool Suite](#the-tool-suite)
 - [Mentor Personas](#mentor-personas)
-- [Quick Ask Skills](#quick-ask-skills)
-- [Rate Limits](#rate-limits)
-- [Conversation Windows](#conversation-windows)
-- [Conversation Summarization](#conversation-summarization)
-- [Admin Panel](#admin-panel)
+- [Quick-Ask Skills](#quick-ask-skills)
+
+</td>
+<td valign="top">
+
+**Depth**
+- [Rate Limits & Fair Use](#rate-limits--fair-use)
+- [Resilience & Recovery](#resilience--recovery)
+- [Admin Console](#admin-console)
 - [Optional Modules](#optional-modules)
-- [Telethon v2 Notes](#telethon-v2-notes)
-- [Internal Workflow](#internal-workflow)
-- [Important Implementation Notes](#important-implementation-notes)
-- [Limitations](#limitations)
-- [Known Issues](#known-issues)
+- [Telethon v2 Foundation](#telethon-v2-foundation)
+
+**Reference**
+- [Engineering Notes](#engineering-notes)
 - [Troubleshooting](#troubleshooting)
 - [Contributing](#contributing)
 - [License](#license)
 
----
-
-## Features
-
-- **Dual AI provider support** — Google Gemini (primary) and OpenAI-compatible APIs (fallback/alternative) with automatic provider fallback on error
-- **Multi-key round-robin** — Up to 16 API keys per provider, rotated automatically to distribute rate limits
-- **Multi-AI-service management** — Admin-defined AI services with independent API keys, base URLs, and model configurations
-- **4 trading mentor personas** — Distinct analytical frameworks: ICT (Micheal), Quarterly Theory (Daye), Matrix/369 (Zeussy), Price Action (Al Brooks)
-- **4 Quick Ask skills** — General assistant, Socratic teaching, programming, deep analytical thinking
-- **Tool calling** — Web search, image generation, market data (OHLC candles), HTML booklet generation
-- **Candlestick chart generation** — Local matplotlib-based chart images (opt-in, disabled by default)
-- **Multi-window conversations** — Up to 5 independent conversation windows per user
-- **Auto-summarization** — Background context compression when conversations exceed 5 messages / 15k tokens
-- **12-hour rolling usage windows** — Per-user limits for requests, tokens, images, and HTML files, reset at 11:00/23:00 Tehran time
-- **Usage-based auto-downgrade** — Switches to lighter models when global or per-user thresholds are exceeded
-- **Gemini 503 auto-recovery** — Automatic model downgrade on sustained 503 errors with scheduled recovery
-- **Mandatory channel join enforcement** — Requires users to join specified channels before using the bot
-- **Admin panel** — User management, model configuration, block/unblock, provider switching
-- **Animated waiting messages** — Context-aware progress animations with tool-specific details
-- **Second-verify** — Inactivity detection prompts users to continue or reset after 30 minutes
-- **Inline query support** — Quick mentor selection via Telegram inline mode
-- **Trade Journal module** — Full trade logging, analysis, statistics, templates, and notifications
-- **Channel Watcher module** — AI-powered monitoring of Telegram channels with smart classification
-- **Collapsible long messages** — Auto-collapse for lengthy responses with expand/collapse toggle
-- **Market data caching** — File-based JSON cache to reduce API calls
-- **Separate databases** — Independent SQLite databases for bot, trade journal, and channel watcher
+</td>
+</tr>
+</table>
 
 ---
 
-## Architecture
+## What is OXYGPT?
 
-### Layered Overview
+**OXYGPT** is a production-grade Telegram bot that puts a multi-provider generative
+engine, a suite of live tools, and a set of specialist trading mentors behind a
+single, polished, Persian-first chat interface.
 
+It is not a thin wrapper around one model API. It is a **stateful conversation
+platform**: every user gets up to five independent conversation windows with
+persistent memory and automatic context compression; requests are routed across
+a pool of API keys and two provider families with transparent failover; and the
+assistant can reach out to the world through tools — searching the web, drawing
+market candles, generating images, and rendering shareable HTML booklets — all
+narrated back to the user through live, animated progress messages.
+
+Around this core sit two optional, self-contained products: a full **Trade
+Journal** for logging, analysing, and publishing trades, and a **Channel
+Watcher** that quietly reads Telegram channels and surfaces only what matters,
+classified and summarised by an intelligent model.
+
+> **Built on Telethon v2 (`2.0.0a0`).** The entire Telegram layer targets the
+> full Telethon v2 rewrite — explicit connect/login, `PeerRef` entities,
+> separated events & filters, per-call parse modes, and more. Every Telethon
+> symbol is imported through a single in-repo compatibility layer,
+> `telethon_compat.py`, keeping the differences in one auditable place. See
+> [Telethon v2 Foundation](#telethon-v2-foundation).
+
+---
+
+## Highlights
+
+| | |
+|---|---|
+| 🧠 **Dual-provider engine** | Google Gemini as the primary brain, any OpenAI-compatible endpoint as fallback — with automatic, transparent failover on retryable errors. |
+| 🔑 **16-key round-robin per provider** | Keys rotate automatically to spread rate limits; per-window overrides let specific chats use dedicated services. |
+| 🛠️ **Live tool-calling** | Web search, image generation, market OHLC data, and RTL HTML booklet rendering — invoked by the model and streamed back as progress. |
+| 🎓 **4 trading mentors** | ICT, Quarterly Theory, Matrix/369, and Price Action — each a distinct analytical persona with its own framework and voice. |
+| 🪟 **Multi-window memory** | Five isolated conversation windows per user, persisted in SQLite, with background summarisation that compresses long histories automatically. |
+| ⏱️ **12-hour rolling quotas** | Fair-use windows for requests, tokens, images, and files that reset on a Tehran-time schedule, with free and paid tiers. |
+| 🛡️ **Self-healing under load** | Sustained `503`s trigger an automatic model downgrade with a scheduled 30-minute recovery, all reported to the admin. |
+| 📓 **Trade Journal** | Templated trade entry, rich statistics, model-powered analysis, alerts, and channel publishing — with automatic backups. |
+| 📡 **Channel Watcher** | Background monitoring of Telegram channels with importance classification and full-content analysis, delivered as clean summary cards. |
+| 🎬 **Animated feedback** | A status animator turns every wait into a live, tool-aware progress message instead of a silent spinner. |
+
+---
+
+## Feature Matrix
+
+<details open>
+<summary><b>Conversation & Intelligence</b></summary>
+
+- Dual generative providers (Gemini primary / OpenAI-compatible fallback) with automatic failover
+- Multi-key round-robin pools — up to **16 keys per provider**
+- Admin-defined multi-service management: independent base URLs, keys, and per-mode models
+- Four trading-mentor personas with dedicated analytical frameworks
+- Four quick-ask skills: general assistant, Socratic teaching, coding, deep analytical thinking
+- Up to **5 independent conversation windows** per user, each with its own history and mode
+- Background auto-summarisation when a window grows past **5 messages / 15k tokens**
+- Usage-aware auto-downgrade to lighter models under global or per-user pressure
+
+</details>
+
+<details>
+<summary><b>Tools & Content</b></summary>
+
+- **Web search** via the model's grounded Google Search, with source attribution
+- **Image generation** with eight style presets and content-aware aspect-ratio detection
+- **Market data** — OHLC candles for forex & crypto with per-timeframe caching
+- **HTML booklets** — sanitised, RTL-optimised, print-friendly branded documents
+- Optional local **candlestick charts** (matplotlib, disabled by default)
+
+</details>
+
+<details>
+<summary><b>Platform & Operations</b></summary>
+
+- 12-hour rolling usage windows (reset 11:00 / 23:00 Tehran time) with free/paid tiers
+- Sustained-`503` auto-downgrade with scheduled 30-minute recovery and admin alerts
+- Mandatory channel-join enforcement with cached membership checks
+- Full admin console: users, blocks, models, providers, services, locks, dashboards
+- Second-verify inactivity detection after 30 minutes of silence
+- Inline-query mentor selection and collapsible long messages
+- Independent SQLite databases for the bot, trade journal, and channel watcher
+
+</details>
+
+<details>
+<summary><b>Optional Modules</b></summary>
+
+- **Trade Journal** — templated entry, search, statistics, model analysis, notifications, auto-backup
+- **Channel Watcher** — per-monitor background workers, importance classification, full analysis, PM/group delivery, 90-day retention
+
+</details>
+
+---
+
+## At a Glance
+
+```text
+┌─────────────────────────────────────────────────────────────────────────┐
+│  User in Telegram                                                         │
+│      │  "Analyze EURUSD on the 1h with ICT concepts and draw me a chart"  │
+│      ▼                                                                     │
+│  ┌───────────────┐   window memory   ┌──────────────────────────────┐    │
+│  │  OXYGPT bot   │──────────────────▶│  Generative engine (Gemini)  │    │
+│  │  (Telethon 2) │◀──────────────────│  + tool calls + failover     │    │
+│  └───────────────┘   live progress   └──────────────┬───────────────┘    │
+│      │                                               │                    │
+│      │  animated status: "📡 fetching market data…"  │  get_market_data   │
+│      ▼                                               ▼                    │
+│  Rich reply  ◀── HTML booklet · image · chart · grounded text ── tools    │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
-telegram.py                  Entry point — reads env vars, creates TelegramBot, starts client
+
+---
+
+## System Architecture
+
+OXYGPT is organised into clean, decoupled layers. The Telegram edge, the
+generative engine, the persistence layer, and the tool suite each own a single
+responsibility and communicate through narrow interfaces.
+
+```text
+telegram.py                     Entry point — loads env, builds TelegramBot, starts the client
 │
-├── TelegramBot (telegram/bot.py)
-│   │   Orchestrator: session management, rate limiting, handler registration,
-│   │   membership checks, 12-hour reset loop, stale-data cleanup
+├── TelegramBot ─ telegram/bot.py
+│   │   Orchestrator: sessions, rate limiting, membership checks,
+│   │   handler registration, 12-hour reset loop, stale-data cleanup
 │   │
-│   ├── Event handlers (telegram/handlers/)
-│   │   ├── commands.py       — /start, /cancel, /arise
-│   │   ├── admin.py          — Admin panel, model config, block/unblock, providers, services
-│   │   ├── menu.py           — Main menu, help system, quick ask/mentor/misc callbacks
-│   │   ├── ai.py             — Core AI message processing pipeline
-│   │   ├── windows.py        — Multi-window creation, switching, rename, delete
-│   │   ├── shortcuts.py      — Quick commands (/ask, /code, /micheal, /w, etc.)
-│   │   ├── misc.py           — Inline query, window panel, switch handlers
-│   │   └── verify.py         — Second-verify inactivity detection
+│   ├── Event handlers ─ telegram/handlers/
+│   │     commands · admin · menu · ai · windows · shortcuts · misc · verify
 │   │
-│   ├── DatabaseManager (database.py)
-│   │       SQLite persistence: windows, usage, settings, blocks, locks, services
+│   ├── StatusAnimator ─ telegram/animator.py     Live, tool-aware progress messages
 │   │
-│   └── AI_Service (api_http.py)
-│           Per-user AI session: provider routing, tool calling, summarization
-│           │
-│           ├── GeminiClientPool    — Round-robin Gemini key rotation
-│           ├── OpenAIClientPool    — Round-robin OpenAI key rotation
-│           ├── ServiceManager      — Multi-service provider management
-│           └── tools.py            — Tool functions (market data, image, search, HTML)
+│   ├── DatabaseManager ─ database.py             SQLite: windows, usage, settings, blocks…
+│   │
+│   └── AI_Service ─ api_http.py                  Per-user generative session
+│         ├── GeminiClientPool      Round-robin Gemini key rotation
+│         ├── OpenAIClientPool      Round-robin OpenAI-compatible key rotation
+│         ├── ServiceManager        Multi-service provider management
+│         └── tools.py              search · image · market · booklet
 │
-├── trade_journal/              Optional: trade logging, stats, templates, notifications
-├── channel_watcher/            Optional: AI channel monitoring with smart classification
-└── chart_generator.py          Optional: matplotlib candlestick charts (disabled by default)
+├── Gemini503Manager ─ gemini_503_manager.py      Global 503 detection, downgrade & recovery
+│
+├── trade_journal/                Optional — logging, stats, analysis, notifications
+├── channel_watcher/              Optional — smart-classification channel monitoring
+└── chart_generator.py            Optional — matplotlib candlesticks (off by default)
 ```
 
-### Request Flow
+### The engine at the center
 
-```
+`AI_Service` (in `api_http.py`) is the heart of the system. Each user's active
+window owns one service instance that:
+
+- routes generation to the active provider and **fails over** to the other on retryable errors,
+- rotates across the key pool so no single credential absorbs the whole load,
+- brokers **tool calls** — each call emits a `ToolEvent` that drives the live progress animation,
+- runs **background summarisation** so long conversations stay within budget,
+- and isolates Gemini `503`s to the dedicated `Gemini503Manager` rather than a blunt provider swap.
+
+---
+
+## Request Lifecycle
+
+```text
 User message
     │
     ▼
-Telegram client receives event
-    │
-    ▼
-TelegramBot.pending_message_handler
-    │── Membership / block checks
-    │── Rate limit checks (requests, tokens, images, HTML)
-    │── Create/get AI_Service for the user's active window
-    │── Start StatusAnimator for animated progress
-    │
+Telegram event  ──▶  TelegramBot.pending_message_handler
+    │                   ├─ block checks (user / group)
+    │                   ├─ mandatory channel-join enforcement
+    │                   ├─ rate-limit checks (requests · tokens · images · files)
+    │                   ├─ resolve / create AI_Service for the active window
+    │                   └─ start StatusAnimator (animated progress)
     ▼
 AI_Service.handle_message
-    │── Append user message to history
-    │── Resolve model from DB settings or service config
-    │── Call generate_response with timeout & tool-call callback
-    │
+    │   append user turn ▸ resolve model ▸ call generate_response(timeout, tool callback)
     ▼
 AI_Service.generate_response
-    │── Route to Gemini or OpenAI based on active provider
-    │── On provider error: auto-fallback to alternate provider
-    │── On 503 (Gemini): integrated 503 manager handles downgrade
+    │   route to Gemini or OpenAI-compatible
+    │   ├─ retryable error  ▸ fail over to the other provider (session migrates on success)
+    │   └─ Gemini 503        ▸ Gemini503Manager (downgrade + scheduled recovery)
+    ▼
+Provider generates content  ──▶  each tool call emits a ToolEvent ▸ animator updates
     │
     ▼
-Provider generates content (with optional tool calls)
-    │── Each tool call emits a ToolEvent → StatusAnimator update
+Response delivery (telegram/handlers/ai.py), by priority:
+    0 · HTML booklet  → sent as a document
+    1 · Image         → sent with caption
+    2 · Chart         → chart image + text
+    3 · Plain text    → edits the loading message in place
     │
     ▼
-_response (telegram/handlers/ai.py)
-    │── Priority 0: HTML booklet → send as document
-    │── Priority 1: Image → send with caption
-    │── Priority 2: Chart → send chart + text reply
-    │── Priority 3: Plain text → edit loading message
-    │
-    ▼
-Background tasks triggered:
-    ├── _background_summarize() — if history exceeds threshold
-    └── update_window_interaction() — for second-verify timestamp
+Post-processing
+    ├─ persist window session
+    ├─ update interaction timestamp (second-verify)
+    └─ trigger background summarisation if the window is large enough
 ```
 
-### Key Design Decisions
+---
 
-- **Multi-key rotation** — Up to 16 API keys per provider rotated via round-robin to distribute rate limits
-- **Provider fallback** — On retryable errors (429, 500, 502, 504, timeout), automatically falls back to the other provider; on success, session is migrated to the working provider
-- **503 isolation** — Gemini 503 errors are handled by `Gemini503Manager` (auto-downgrade + 30-min recovery), NOT by provider-wide fallback
-- **12-hour rolling windows** — Usage metrics reset at 11:00 and 23:00 Tehran time. A startup check handles missed resets (e.g., bot was offline)
-- **Two-level downgrade** — Global (>1000 req / 5M tokens) enables flash-lite for non-mentor; per-user (>300 req / 2.5M tokens) enables flash-lite for that user
-- **Auto-summarization** — Triggered at 5+ messages and 15k+ tokens; uses a lighter model (`gemini-3.1-flash-lite`) via the search pool; 30-second cooldown prevents tight spawn loops
-- **Separate SQLite databases** — `bot_database.db` (main), `trade_journal/journal.db`, `channel_watcher/channel_watcher.db`
-- **Race-safe window creation** — Uses `BEGIN IMMEDIATE` to prevent duplicate window creation from concurrent requests
+## Design Principles
+
+| Principle | How it shows up in the code |
+|---|---|
+| **Async-first** | All I/O is `asyncio`; CPU-bound work (chart rendering) is off-loaded with `asyncio.to_thread`. |
+| **Graceful degradation** | Provider failover, key rotation, and `503` auto-downgrade keep the bot answering even as parts fail. |
+| **Isolation of concerns** | Bot edge, engine, persistence, and tools are separate layers; optional modules use their own databases. |
+| **Persistence over memory** | Windows, usage, settings, and blocks live in SQLite so state survives restarts. |
+| **Race-safety by design** | `BEGIN IMMEDIATE` guards window creation; version tracking prevents summaries from clobbering new turns. |
+| **One place for platform quirks** | Every Telethon v1→v2 difference is absorbed in `telethon_compat.py`, not scattered across the codebase. |
 
 ---
 
 ## Directory Structure
 
-```
+```text
 OXYGPT/
-├── telegram.py                 # Entry point — creates TelegramBot and starts the client
-├── telethon_compat.py          # Telethon v1→v2 compatibility layer (import Telethon from here)
-├── MIGRATION_NOTES.md          # Detailed Telethon v1→v2 migration notes
-├── api_http.py                 # AI service layer: Gemini/OpenAI providers, tool calling,
-│                               # summarization, client pools, service manager
-├── tools.py                    # Tool implementations: market data (FCSAPI), image generation
-│                               # (freegen.app), web search (Gemini), HTML booklets
-├── database.py                 # SQLite DatabaseManager: windows, usage, settings, blocks,
-│                               # locks, AI services, 503 state
-├── system_prompt.py            # Mentor system prompts: micheal (ICT), daye (QT),
-│                               # zeussy (Matrix/369), albrooks (Price Action)
-├── skills.py                   # Quick Ask skills: default, learn, coding, deepthink
-├── chart_generator.py          # Matplotlib candlestick chart generator (disabled by default)
-├── gemini_503_manager.py       # Centralized 503 error handling and auto-recovery
-├── bot_logging.py              # Root logging configuration
-├── requirements.txt            # Python dependencies
-├── .env                        # Environment variables (not tracked in git)
-├── .gitignore
+├── telegram.py                 Entry point — builds TelegramBot and starts the client
+├── telethon_compat.py          Telethon v1→v2 compatibility layer (import Telethon from here)
+├── api_http.py                 Generative engine: providers, tool-calling, summarisation, pools
+├── tools.py                    Tools: market data (FCSAPI), image (freegen.app), search, booklets
+├── database.py                 SQLite DatabaseManager: windows, usage, settings, blocks, locks…
+├── system_prompt.py            Mentor prompts: micheal (ICT), daye (QT), zeussy (369), albrooks (PA)
+├── skills.py                   Quick-ask skills: default, learn, coding, deepthink
+├── gemini_503_manager.py       Centralised 503 handling & auto-recovery
+├── chart_generator.py          Matplotlib candlestick charts (disabled by default)
+├── bot_logging.py              Root logging configuration
+├── requirements.txt            Python dependencies (pulls Telethon v2 from GitHub)
+├── .env.example                Environment template
 │
-├── telegram/                   # Telegram bot package
-│   ├── __init__.py             # Re-exports TelegramBot
-│   ├── bot.py                  # TelegramBot class — main orchestrator
-│   ├── animator.py             # StatusAnimator — animated waiting messages
-│   ├── constants.py            # ToolEvent, tips, patience messages, phase icons, greetings
-│   ├── utils.py                # Time utilities, HTML truncation, progress bars, UI helpers
-│   └── handlers/               # Event handler modules
-│       ├── __init__.py         # Re-exports all handlers
-│       ├── ai.py               # AI message processing pipeline, _send_response
-│       ├── admin.py            # Admin panel, user/group management, model config
-│       ├── commands.py         # Core commands (/start, /cancel, /arise)
-│       ├── menu.py             # Main menu, help system, callback handling
-│       ├── windows.py          # Multi-window CRUD
-│       ├── shortcuts.py        # Quick commands and skill handlers
-│       ├── misc.py             # Inline query, panel, switch handlers
-│       └── verify.py           # Second-verify inactivity detection
+├── telegram/                   Telegram bot package
+│   ├── bot.py                  TelegramBot — the orchestrator
+│   ├── animator.py             StatusAnimator — animated waiting messages
+│   ├── constants.py            ToolEvent, tips, patience messages, phase icons, help text
+│   ├── utils.py                Time utilities, HTML truncation, progress bars, UI helpers
+│   └── handlers/
+│       ├── ai.py               Message-processing pipeline & response delivery
+│       ├── admin.py            Admin console: users, blocks, models, providers, services
+│       ├── commands.py         Core commands (/start, /cancel, /arise)
+│       ├── menu.py             Main menu, help system, callbacks
+│       ├── windows.py          Multi-window create / switch / rename / delete
+│       ├── shortcuts.py        Quick commands (/ask, /code, /micheal, /w, …)
+│       ├── misc.py             Inline query, window panel, switch handlers
+│       └── verify.py           Second-verify inactivity detection
 │
-├── trade_journal/              # Trade Journal module (optional)
-│   ├── __init__.py             # Module registration, auto-backup loop
-│   ├── database.py             # Separate SQLite database for trade data
-│   ├── states.py               # Conversation state management
-│   ├── utils.py                # Formatting and parsing helpers
-│   ├── handlers/               # Trade journal event handlers
-│   │   ├── entry.py            # Trade entry flow
-│   │   ├── search.py           # Trade search
-│   │   ├── stats.py            # Statistics and analytics
-│   │   ├── template_builder.py # Template CRUD
-│   │   ├── settings.py         # Journal settings
-│   │   ├── setup.py            # Initial setup
-│   │   ├── live_form.py        # Live form handling
-│   │   ├── symbols.py          # Symbol management
-│   │   ├── bulk.py             # Bulk operations
-│   │   └── notifications.py    # Notification management
-│   ├── services/               # Business logic services
-│   │   ├── trade_service.py    # Trade CRUD
-│   │   ├── template_service.py # Template management
-│   │   ├── notification_service.py  # Loss streak / goal alerts
-│   │   └── ai_analysis.py      # AI-powered trade analysis
-│   └── ui/                     # UI components (keyboards, formatters)
+├── trade_journal/              Optional — trade logging, stats, analysis, notifications
+│   ├── database.py             Independent SQLite database
+│   ├── handlers/               entry · search · stats · templates · settings · setup · …
+│   ├── services/               trade · template · notification · analysis
+│   └── ui/                     keyboards & formatters
 │
-└── channel_watcher/            # Channel Watcher module (optional)
-    ├── __init__.py             # Module registration, monitor workers, analysis cycle
-    ├── database.py             # Separate SQLite database for monitors
-    ├── states.py               # Conversation state management
-    ├── handlers/               # Channel watcher event handlers
-    │   ├── setup.py            # Monitor creation/configuration
-    │   ├── settings.py         # Monitor settings
-    │   └── callbacks.py        # Callback handlers
-    ├── services/               # Business logic services
-    │   ├── fetcher.py          # Channel message fetching
-    │   ├── analyzer.py         # AI classification and analysis
-    │   └── notifier.py         # Result delivery/notification
-    └── ui/                     # UI components (keyboards, formatters)
+└── channel_watcher/            Optional — smart-classification channel monitoring
+    ├── database.py             Independent SQLite database
+    ├── handlers/               setup · settings · callbacks
+    ├── services/               fetcher · analyzer · notifier
+    └── ui/                     keyboards & formatters
 ```
 
 ---
 
 ## Requirements
 
-- Python 3.9+ (3.11+ recommended)
-- **Telethon v2 (`2.0.0a0`)** — installed from the official `v2` branch, **not**
-  from PyPI (see [Installation](#installation)). The published `telethon`
-  package on PyPI is the v1 line and is **not** compatible with this codebase.
-- A Telegram API ID and hash (from [my.telegram.org](https://my.telegram.org))
-- A Telegram bot token (from [@BotFather](https://t.me/BotFather))
-- At least one Google Gemini API key
-- (Optional) OpenAI-compatible API keys for fallback/secondary provider
-- (Optional) FCSAPI token for market data
-- (Optional) A Telegram user account for the Channel Watcher module — under v2
-  the first login prompts for a login code and, if the account has two-step
-  verification enabled, a password (see [Configuration](#configuration))
+- **Python 3.9+** (3.11+ recommended)
+- **Telethon v2 (`2.0.0a0`)** — installed from the official `v2` branch, **not** from PyPI.
+  The published `telethon` package is the v1 line and is **not** compatible with this codebase.
+- A Telegram **API ID** and **API hash** — from [my.telegram.org](https://my.telegram.org)
+- A Telegram **bot token** — from [@BotFather](https://t.me/BotFather)
+- At least one **Google Gemini** API key
+- *(Optional)* **OpenAI-compatible** API keys for the fallback/secondary provider
+- *(Optional)* An **FCSAPI** token for the market-data tool
+- *(Optional)* A Telegram **user account** for the Channel Watcher module (first login prompts
+  for a code and, if two-step verification is enabled, a password)
 
 ---
 
 ## Installation
 
 ```bash
-# Clone the repository
+# 1. Clone
 git clone <repo-url>
 cd OXYGPT
 
-# Create and activate a virtual environment (recommended)
+# 2. Create and activate a virtual environment
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate            # Windows: venv\Scripts\activate
 
-# Install dependencies (this pulls Telethon v2 from GitHub — see note below)
+# 3. Install dependencies (pulls Telethon v2 from GitHub — see note below)
 pip install -r requirements.txt
 
-# Copy and configure environment variables
+# 4. Configure
 cp .env.example .env
 # Edit .env with your credentials
 ```
 
 ### Installing Telethon v2
 
-Telethon v2 (`2.0.0a0`) is a full rewrite that has **not** been published to
-PyPI yet, so it is installed straight from the official `v2` branch. This is
-already wired into `requirements.txt`, but you can also install it explicitly:
+Telethon v2 (`2.0.0a0`) is a full rewrite that has **not** been published to PyPI, so it is
+installed straight from the official `v2` branch. This is already wired into `requirements.txt`,
+but you can also install it explicitly:
 
 ```bash
 pip install "git+https://github.com/LonamiWebs/Telethon.git@v2#subdirectory=client"
 ```
 
-- Do **not** run `pip install telethon` — that installs the v1 line from PyPI,
-  which is incompatible with this codebase.
-- Offline/dev environments may install from a local checkout instead:
-  `pip install ./telethon-src/client`.
-- When Telethon 2.0.0 eventually lands on PyPI, the pin in `requirements.txt`
-  can be replaced with `telethon>=2,<3`.
+- Do **not** run `pip install telethon` — that installs the incompatible v1 line from PyPI.
+- Offline/dev environments can install from a local checkout: `pip install ./telethon-src/client`.
+- When Telethon 2.0.0 lands on PyPI, the pin can be replaced with `telethon>=2,<3`.
 
-> **Build note:** the v2 branch generates its TL layer at build time and needs
+> **Build note.** The v2 branch generates its TL layer at build time and needs
 > `typing_extensions` available during the build. If the wheel build fails with
 > `No module named 'typing_extensions'`, install the build helpers first
-> (`pip install typing_extensions setuptools wheel`) and retry the install.
+> (`pip install typing_extensions setuptools wheel`) and retry.
 
 ---
 
 ## Configuration
 
-### Environment Variables
-
-Create a `.env` file in the project root with the following:
+Create a `.env` file in the project root:
 
 ```env
-# ── Telegram Credentials ──
+# ── Telegram credentials ──────────────────────────────
 TELEGRAM_API_ID=your_api_id
 TELEGRAM_API_HASH=your_api_hash
 TELEGRAM_BOT_TOKEN=your_bot_token
 
-# ── Gemini API Keys (up to 16, at least one required) ──
+# ── Gemini keys (up to 16; at least one required) ─────
 GEMINI_API_KEY_1=your_key_here
 GEMINI_API_KEY_2=your_key_here
-# ... up to GEMINI_API_KEY_16
+# … up to GEMINI_API_KEY_16
 
-# ── OpenAI-Compatible Provider (optional) ──
+# ── OpenAI-compatible provider (optional) ─────────────
 OPENAI_BASE_URL=https://router.bynara.id/v1
 OPENAI_API_KEY_1=
-# ... up to OPENAI_API_KEY_16
+# … up to OPENAI_API_KEY_16
 
-# ── FCSAPI Token (optional, for market data tool) ──
+# ── Market data (optional) ────────────────────────────
 FCSAPI_TOKEN=your_token_here
 
-# ── Admin User ID (for 503 notifications) ──
+# ── Admin (for 503 / system notifications) ────────────
 ADMIN_USER_ID=your_telegram_user_id
 
-# ── Channel Watcher User Account (optional, requires a user account) ──
-# Phone number in international format for the Channel Watcher user login.
-CW_USER_PHONE=+989123456789
-# Two-step-verification (2FA) password for the Channel Watcher account.
-# Under Telethon v2 the user login is an explicit code + optional password
-# flow. Set this to complete 2FA non-interactively (headless/server runs);
-# if the account has no 2FA, leave it empty. When unset and 2FA is required,
-# the bot falls back to an interactive password prompt on first login.
-CW_USER_PASSWORD=
+# ── Channel Watcher user account (optional) ───────────
+CW_USER_PHONE=+989123456789   # international format
+CW_USER_PASSWORD=             # two-step-verification password; leave empty if 2FA is off
 ```
 
-> **Telethon v2 login:** the bot account logs in with its token via the v2
-> `connect()` + `bot_sign_in(token)` flow, and the Channel Watcher user account
-> logs in via `connect()` + `request_login_code()` + `sign_in()` (plus
-> `check_password()` when 2FA is enabled). Because the v2 session format differs
-> from v1, existing `bot.session` / `channel_watcher_user.session` files created
-> under v1 are **not** reused — the first v2 run re-authenticates and rewrites
-> them in the new format. See [Telethon v2 Notes](#telethon-v2-notes).
+> **Login flow (Telethon v2).** The bot account signs in with its token via `connect()` +
+> `bot_sign_in(token)`. The Channel Watcher user account signs in via `connect()` +
+> `request_login_code()` + `sign_in()` (plus `check_password()` when 2FA is enabled). Because the
+> v2 session format differs from v1, existing `bot.session` / `channel_watcher_user.session` files
+> are **not** reused — the first v2 run re-authenticates and rewrites them. See
+> [Telethon v2 Foundation](#telethon-v2-foundation).
 
-### Configurable Settings (via Admin Panel or Database)
+### Runtime settings (changeable via the admin console)
 
-Many settings are stored in the SQLite database `settings` table and can be changed at runtime through the admin panel:
+Stored in the SQLite `settings` table and editable live:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `active_provider` | `gemini` | Active AI provider (`gemini` or `openai`) |
-| `quick_ask_model` | `gemini-3.1-flash-lite` | Model for Quick Ask mode (Gemini) |
-| `mentors_model` | `gemini-3.1-flash-lite` | Model for mentor conversations (Gemini) |
-| `search_model` | `gemini-2.5-flash` | Model for web search tool |
-| `fallback_model` | `gemini-3.1-flash-lite` | Fallback model for Gemini errors |
-| `search_fallback_model` | `gemini-2.0-flash` | Fallback model for search tool |
-| `openai_quick_ask_model` | `mimo-v2.5-free` | Model for Quick Ask mode (OpenAI) |
-| `openai_mentors_model` | `mimo-v2.5-free` | Model for mentor conversations (OpenAI) |
-| `openai_fallback_model` | `mimo-v2.5-free` | Fallback model for OpenAI errors |
-| `cw_classifier_model` | `gemini-3.1-flash-lite` | Model for Channel Watcher classifier |
-| `default_openai_service` | (empty) | Default OpenAI service ID for new windows |
+| `active_provider` | `gemini` | Active provider (`gemini` / `openai`) |
+| `quick_ask_model` | `gemini-3.1-flash-lite` | Quick-ask model (Gemini) |
+| `mentors_model` | `gemini-3.1-flash-lite` | Mentor model (Gemini) |
+| `search_model` | `gemini-2.5-flash` | Web-search tool model |
+| `fallback_model` | `gemini-3.1-flash-lite` | Fallback on Gemini errors |
+| `search_fallback_model` | `gemini-2.0-flash` | Fallback for the search tool |
+| `openai_quick_ask_model` | `mimo-v2.5-free` | Quick-ask model (OpenAI-compatible) |
+| `openai_mentors_model` | `mimo-v2.5-free` | Mentor model (OpenAI-compatible) |
+| `openai_fallback_model` | `mimo-v2.5-free` | Fallback (OpenAI-compatible) |
+| `cw_classifier_model` | `gemini-3.1-flash-lite` | Channel Watcher classifier model |
+| `default_openai_service` | *(empty)* | Default service ID for new windows |
 
 ---
 
@@ -380,534 +460,345 @@ Many settings are stored in the SQLite database `settings` table and can be chan
 python telegram.py
 ```
 
-The bot starts, connects to Telegram, registers all event handlers, loads optional modules (Trade Journal, Channel Watcher), and begins the 12-hour reset loop.
+On start, the bot connects to Telegram, registers every handler, loads the optional modules
+(Trade Journal, Channel Watcher), and begins its background loops.
 
-### Important First-Time Notes
+**First-run notes**
 
-1. On first run, a `bot.session` file is created (Telethon session cache). Under
-   Telethon v2 the session format differs from v1, so a v1-era `bot.session`
-   is **not** reused — the bot re-authenticates with its token and rewrites the
-   file in the v2 format. This is a one-time re-login.
-2. SQLite databases (`bot_database.db`, etc.) are auto-created with all required tables
-3. The Channel Watcher module requires a user account phone number (`CW_USER_PHONE`).
-   On first load — or after the v2 session re-login — it prompts for the Telegram
-   login code and, if the account has two-step verification enabled, a password.
-   Set `CW_USER_PASSWORD` in `.env` to complete 2FA without an interactive prompt
-   (recommended for headless/server deployments). Once authenticated, the
-   `channel_watcher_user.session` file is cached and subsequent starts skip the prompts.
-4. Logs are written to `logs/telegram.log`, `logs/api_http.log`, `logs/tools.log`
+1. A `bot.session` cache is created. Under Telethon v2 the format differs from v1, so a v1-era
+   session is not reused — the bot re-authenticates with its token once and rewrites the file.
+2. SQLite databases (`bot_database.db`, and the module databases) are auto-created with all tables.
+3. The Channel Watcher module needs `CW_USER_PHONE`; on first authentication it prompts for a login
+   code and, if 2FA is on, a password (set `CW_USER_PASSWORD` for headless runs). The session is
+   then cached.
+4. Logs are written to `logs/telegram.log`, `logs/api_http.log`, and `logs/tools.log`.
 
 ---
 
-## Available Scripts
+## Generative Engine
 
-| Command | Purpose |
-|---------|---------|
-| `python telegram.py` | Start the bot |
-| `pip install -r requirements.txt` | Install dependencies |
+### Providers
 
----
+| Provider | SDK | Key format | Role |
+|----------|-----|------------|------|
+| Google Gemini | `google-genai` (`from google import genai`) | `GEMINI_API_KEY_1..16` | Primary |
+| OpenAI-compatible | `openai` | `OPENAI_API_KEY_1..16` | Fallback / alternative |
 
-## Development Workflow
+### Key rotation
 
-### Code Style
+Both providers use round-robin client pools. `GeminiClientPool` reads
+`GEMINI_API_KEY_1..16`; `OpenAIClientPool` reads `OPENAI_API_KEY_1..16` with the base URL from
+`OPENAI_BASE_URL`. A window's optional `service_id` can override the global provider for that window.
 
-- Type hints are used throughout — add them to new code
-- Docstrings on all public functions and classes (Google-style or plain descriptive)
-- Persian comments for internal logic, English for API-level documentation
-- Async-first: use `asyncio` for I/O-bound operations, `asyncio.to_thread` for CPU-bound work (e.g., chart generation)
+### Failover logic
 
-### Testing
+When the active provider returns a **retryable** error (rate limit, `500`/`502`/`504`, timeout),
+`generate_response` transparently falls back to the other provider:
 
-There is no formal test suite. Manual testing via Telegram is the current approach. When contributing:
-- Test conversations in both Quick Ask and Mentor modes
-- Test all four tools (search, image, market, HTML)
-- Test rate limiting by exhausting limits
-- Test provider fallback by revoking keys
+1. Primary fails with a retryable error.
+2. The alternate provider is attempted.
+3. On success, the session migrates to the working provider.
+4. If the alternate also fails, the original error is surfaced.
 
-### Logging
+**Exceptions:** Gemini `503`s are handled by the `Gemini503Manager` (auto-downgrade, not failover);
+authentication and validation errors never trigger failover.
 
-- Root logger writes to `telegramAI.log` and stdout (configured in `bot_logging.py`)
-- Module-specific loggers write to `logs/`:
-  - `logs/telegram.log` — Telegram bot events
-  - `logs/api_http.log` — AI service operations
-  - `logs/tools.log` — Tool execution logs
-- Log level: INFO by default, DEBUG in `bot_logging.py`
+### Multi-service management
 
----
-
-## AI Providers
-
-### Supported Providers
-
-| Provider | Library | Key Format | Purpose |
-|----------|---------|------------|---------|
-| Google Gemini | `google-generativeai` | `GEMINI_API_KEY_1`..`16` | Primary provider |
-| OpenAI-compatible | `openai` | `OPENAI_API_KEY_1`..`16` | Fallback/alternative |
-
-### Key Rotation
-
-Both providers use round-robin client pools:
-
-- `GeminiClientPool` — reads `GEMINI_API_KEY_1` through `GEMINI_API_KEY_16` from environment
-- `OpenAIApiPool` — reads `OPENAI_API_KEY_1` through `OPENAI_API_KEY_16`, URL from `OPENAI_BASE_URL`
-- Per-window `service_id` can override the global provider for specific windows
-
-### Provider Fallback Logic
-
-When a provider returns a retryable error (rate limit, server error, timeout), `generate_response` automatically falls back to the other provider:
-
-1. Primary provider fails with retryable error
-2. Attempt fallback to the other provider
-3. If fallback succeeds: session provider is updated to the working provider
-4. If fallback also fails: the original error is raised
-
-**Exceptions:**
-- 503 errors on Gemini are handled by `Gemini503Manager` (auto-downgrade, not provider fallback)
-- Authentication and validation errors never trigger fallback
-
-### Multi-Service Management
-
-The `ServiceManager` (api_http.py) manages multiple OpenAI-compatible services, each with:
-- Independent base URL
-- Independent API keys (round-robin)
-- Independent model configuration per mode (`search`, `quick_ask`, `mentors`, `fallback`)
-
-Services are stored in the database and managed through the admin panel.
+`ServiceManager` (in `api_http.py`) manages multiple OpenAI-compatible services, each with an
+independent base URL, its own round-robin key pool, and per-mode models (`search`, `quick_ask`,
+`mentors`, `fallback`). Services are stored in the database and administered through the console.
 
 ---
 
-## Conversation Modes
+## Conversation Model
 
-### Quick Ask (`/ask`)
+### Windows
 
-General-purpose AI assistant with configurable skills:
-- `/ask` — Default assistant (Persian, casual)
-- `/learn` — Socratic teaching method
-- `/code` — Programming assistant
-- `/deep` — Deep analytical thinking
+Each user can hold **up to 5 independent conversation windows**, each with:
 
-### Mentor Mode (`/micheal`, `/daye`, `/zeussy`, `/albrooks`)
+- its own history (capped at 40 messages),
+- its own usage counters,
+- a mode (`quick_ask` or `mentor`) and optional `mentor_key`,
+- an optional `service_id` (for OpenAI multi-service routing),
+- and `last_interaction_time` / `last_user_message` for second-verify.
 
-Specialized trading analysis personas. Each mentor has a distinct analytical framework and system prompt. Market data tool is automatically enabled.
+| Command | Action |
+|---------|--------|
+| `/w` | List all windows |
+| `/sw <id>` | Switch to a window |
+| `/new` | Create a new window |
+| `/clear` | Clear the active window's history |
+
+Windows are also managed from the UI (**Menu → Manage Windows**).
+
+### Automatic summarisation
+
+When a window passes **5 user messages and 15k+ tokens**, a background task compresses it:
+
+1. Uses `gemini-3.1-flash-lite` (search-pool fallback: `gemini-2.0-flash`).
+2. A 30-second cooldown prevents tight spawn loops.
+3. Lock-based, so only one summarisation runs at a time.
+4. Version-tracked — the summary is only persisted if history is unchanged during the run.
+5. Targets ~20% of the current token count as a structured state report.
+6. The summary replaces prior history in the database.
 
 ---
 
-## Tools
+## The Tool Suite
 
-Four tools are exposed to the AI models. Timeouts are configurable in `api_http.py`:
+Four tools are exposed to the models. Timeouts are configurable in `api_http.py`.
 
-| Tool | Function | External API | Timeout | Description |
-|------|----------|-------------|---------|-------------|
-| Web Search | `search_web` | Gemini Google Search | 30s | Current information retrieval |
-| Image Generation | `generate_image` | freegen.app | 90s | Text-to-image with style presets |
-| Market Data | `get_market_data` | FCSAPI | 20s | OHLC candle data (forex/crypto) |
-| HTML Booklet | `generate_html_booklet` | Local (file generation) | 60s | RTL HTML documents with themes |
+| Tool | Function | Backend | Timeout | Purpose |
+|------|----------|---------|---------|---------|
+| 🔎 Web Search | `search_web` | Gemini Google Search | 30s | Fresh information, with source attribution |
+| 🎨 Image Generation | `generate_image` | freegen.app (WebSocket) | 90s | Text-to-image with style presets |
+| 📈 Market Data | `get_market_data` | FCSAPI | 20s | OHLC candles (forex / crypto) |
+| 📄 HTML Booklet | `generate_html_booklet` | Local rendering | 60s | RTL, print-ready branded documents |
 
-### Web Search
+**Web Search** — uses the model's grounded Google Search; grounding metadata (source URLs/titles)
+is extracted and surfaced through the animator.
 
-Uses Gemini's built-in Google Search tool. Grounding metadata (source URLs/titles) is extracted and passed to the animator for display.
+**Image Generation** — styles: `realistic`, `anime`, `cartoon`, `oil_painting`, `digital_art`,
+`minimal`, `3d_render`, `watercolor`; aspect ratios `1:1`/`4:3`/`16:9`/`9:16`/`auto`; automatic
+prompt enhancement; WebSocket progress callbacks; up to 3 retries; tier-limited.
 
-### Image Generation
+**Market Data** — FCSAPI (`https://api-v4.fcsapi.com`); `EXCHANGE:TICKER` symbols
+(e.g. `FX:EURUSD`, `BINANCE:BTCUSDT`) with automatic prefixing; CSV with ISO-8601 timestamps in
+New York time; per-timeframe file cache; up to 3 calls per turn; optional matplotlib chart.
 
-- Styles: `realistic`, `anime`, `cartoon`, `oil_painting`, `digital_art`, `minimal`, `3d_render`, `watercolor`
-- Aspect ratios: `1:1`, `4:3`, `16:9`, `9:16`, `auto` (content-aware detection)
-- Prompt enhancement: automatically adds quality/style modifiers
-- WebSocket-based progress reporting with real-time callbacks
-- Max 3 retries per generation
-- Rate limited per subscription tier
-
-### Market Data
-
-- Source: FCSAPI (`https://api-v4.fcsapi.com`)
-- Symbols: `FX:EURUSD`, `BINANCE:BTCUSDT`, etc. (EXCHANGE:TICKER format)
-- Auto-formatting: adds `FX:` or `BINANCE:` prefix if missing
-- Returns CSV with ISO 8601 timestamps in New York time
-- File-based caching with per-timeframe TTL
-- Chart generation: optionally generates a candlestick chart via matplotlib (disabled by default)
-- Max 3 calls per conversation turn
-
-### HTML Booklet
-
-- Themes: `wood`, `blue`, `green`, `purple`, `dark`, `auto` (content-based)
-- Sanitizes HTML (removes script/iframe/object/embed/form tags)
-- RTL-optimized with Vazirmatn font
-- OXYGPT branded header and footer
-- Print-friendly CSS
-- Max 2MB HTML content, min 100 chars
-- Rate limited per subscription tier
+**HTML Booklet** — themes `wood`/`blue`/`green`/`purple`/`dark`/`auto`; sanitised
+(script/iframe/object/embed/form removed); RTL-optimised with the Vazirmatn font; branded
+header/footer; print-friendly CSS; up to 2 MB content; tier-limited.
 
 ---
 
 ## Mentor Personas
 
-| Mentor | Key | Framework | Style |
+Four trading mentors, each a fully-realised analytical persona with its own framework, voice, and
+tool discipline. Market data is enabled automatically in mentor mode.
+
+| Mentor | Key | Framework | Voice |
 |--------|-----|-----------|-------|
-| Micheal Huddleston | `micheal` | Inner Circle Trader (ICT) | Curt, dense, impatient. Kill zones, liquidity, DOL, PD arrays |
-| Jevaunie Daye | `daye` | Quarterly Theory (QT) | Cold, data-first. Time cycles, Q-phases, SSMT, True Opens |
-| Zeussy / Frank369 | `zeussy` | The Matrix Unlocked (369) | Precise, tactical. 369 theory, MMXM, ERL/IRL, Twitter Model |
-| Al Brooks | `albrooks` | Price Action | Patient, probabilistic. Bar-by-bar, Always In, trading ranges |
+| **Micheal Huddleston** | `micheal` | Inner Circle Trader (ICT) | Curt, dense, impatient — kill zones, liquidity, DOL, PD arrays |
+| **Jevaunie Daye** | `daye` | Quarterly Theory (QT) | Cold, data-first — time cycles, Q-phases, SSMT, True Opens |
+| **Zeussy / Frank369** | `zeussy` | The Matrix Unlocked (369) | Precise, tactical — 369 theory, MMXM, ERL/IRL, Twitter Model |
+| **Al Brooks** | `albrooks` | Price Action | Patient, probabilistic — bar-by-bar, Always-In, trading ranges |
 
-Each mentor prompt contains:
-- Strict formatting rules (Telegram HTML only, RLM marker for Persian text)
-- Complete analytical framework documentation
-- Tool usage instructions and constraints
-- Behavior guidelines and memory anchors
+Each mentor prompt carries strict Telegram-HTML formatting rules (including an RLM marker for
+right-to-left Persian text), its complete framework documentation, tool constraints, and behaviour
+anchors.
 
 ---
 
-## Quick Ask Skills
+## Quick-Ask Skills
 
-| Skill | Key | Behavior |
-|-------|-----|----------|
-| Default | `default` | General assistant (no additional system prompt) |
-| Learn | `learn` | Socratic teaching: diagnose first, toolkit-based instruction, one step forward |
-| Coding | `coding` | Senior software engineer: clean code, type hints, architecture-first |
-| DeepThink | `deepthink` | Analytical reasoning: steelman opposing views, epistemic clarity, structured analysis |
+Invoke via `/ask`, `/learn`, `/code`, `/deep` — the general-purpose assistant with a selectable
+working style.
+
+| Skill | Key | Behaviour |
+|-------|-----|-----------|
+| Default | `default` | General assistant — Persian, casual, no extra system prompt |
+| Learn | `learn` | Socratic teaching — diagnose first, toolkit-based, one step at a time |
+| Coding | `coding` | Senior engineer — clean code, type hints, architecture-first |
+| DeepThink | `deepthink` | Analytical reasoning — steelman opposing views, structured, epistemically careful |
 
 ---
 
-## Rate Limits
+## Rate Limits & Fair Use
 
-Per-user limits within each 12-hour window (reset at 11:00 and 23:00 Tehran time):
+Per-user quotas within each 12-hour window (reset at **11:00** and **23:00** Tehran time):
 
 | Tier | Requests | Tokens | Images | HTML Files |
-|------|----------|--------|--------|------------|
-| Free | 25 | 150,000 | 15 | 10 |
-| Paid | 760 | 300,000 | 40 | 25 |
+|------|---------:|-------:|-------:|-----------:|
+| **Free** | 25 | 150,000 | 15 | 10 |
+| **Paid** | 760 | 300,000 | 40 | 25 |
 
-- **80% soft warning** — Shown once per reset window when approaching limits
-- **Hard limit** — Blocks further requests until reset
-- **Countdown display** — Shows remaining time until next reset
-- **Group usage** — Tracked separately via `group_usage` table
+- **80% soft warning** — shown once per window as limits approach.
+- **Hard limit** — blocks further requests until reset, with a live countdown.
+- **Group usage** — tracked separately in the `group_usage` table.
 
-### Auto-Downgrade Thresholds
+### Auto-downgrade thresholds
 
-| Level | Condition | Action |
-|-------|-----------|--------|
-| Global | >1000 requests OR >5M tokens across all users | Non-mentor requests use `gemini-3.1-flash-lite` |
-| Per-user | >300 requests OR >2.5M tokens for that user | That user's requests use `gemini-3.1-flash-lite` |
-
----
-
-## Conversation Windows
-
-Each user can have up to 5 independent conversation windows. Each window has:
-- Independent history (capped at 40 messages)
-- Independent usage counters
-- Mode (`quick_ask` or `mentor`)
-- Optional `mentor_key`
-- Optional `service_id` (for OpenAI multi-service routing)
-- `last_interaction_time` and `last_user_message` (for second-verify)
-
-### Window Commands
-
-| Command | Description |
-|---------|-------------|
-| `/w` | List all windows |
-| `/sw <id>` | Switch to a specific window |
-| `/new` | Create a new window |
-| `/clear` | Clear history in the active window |
-
-Windows are managed through the UI menu (Menu → Manage Windows).
+| Level | Trigger | Effect |
+|-------|---------|--------|
+| Global | > 1,000 requests **or** > 5M tokens across all users | Non-mentor requests use `gemini-3.1-flash-lite` |
+| Per-user | > 300 requests **or** > 2.5M tokens for one user | That user's requests use `gemini-3.1-flash-lite` |
 
 ---
 
-## Conversation Summarization
+## Resilience & Recovery
 
-When a conversation exceeds 5 user messages and 15k+ total tokens, a background summarization task is triggered:
+OXYGPT is built to keep answering while things go wrong around it.
 
-1. Uses `gemini-3.1-flash-lite` (fallback: `gemini-2.0-flash`)
-2. 30-second cooldown between attempts to prevent tight spawn loops
-3. Lock-based: prevents concurrent summarizations
-4. Version-tracked: only persists if history hasn't changed during summarization
-5. Target size: 20% of current token count, compressed into a structured state report
-6. Summary replaces all history in the database
+- **Provider failover** — retryable errors migrate the session to the healthy provider mid-flight.
+- **Key rotation** — round-robin pools spread load so a throttled key does not stall the bot.
+- **`503` self-healing** — the `Gemini503Manager` watches for sustained `503`s: on the second
+  occurrence it downgrades all `gemini-*-flash` models to `gemini-3.1-flash-lite` database-wide,
+  notifies the admin, and schedules an **automatic 30-minute recovery** that restores the original
+  models and resets the counter.
+- **Missed-reset recovery** — a startup check applies any 12-hour resets that were missed while the
+  bot was offline.
+- **Stale-data cleanup** — an hourly loop evicts pending entries older than 24 hours.
 
 ---
 
-## Admin Panel
+## Admin Console
 
-Access via the `/arise` command (admin-only).
+Open with `/arise` (admin only).
 
-### Available Controls
+| Area | Capabilities |
+|------|--------------|
+| **Users** | List users, view usage, toggle tier (free/paid), reset limits, clear windows |
+| **Blocks** | Block/unblock users and groups with reason tracking |
+| **Models** | Configure models per mode (quick-ask, mentors, search, fallback) for both providers |
+| **Providers** | Switch the global provider between Gemini and OpenAI-compatible |
+| **Services** | Create / edit / delete / activate OpenAI-compatible services |
+| **Locks** | Add/remove mandatory channel-join locks |
+| **Insights** | Usage export, token leaders (users & groups), connection test, live token dashboard |
 
-| Feature | Description |
-|---------|-------------|
-| User Management | List users, view usage, toggle subscription (free/paid), reset limits, clear windows |
-| Block Management | Block/unblock users and groups with reason tracking |
-| Model Configuration | Change models per mode (quick_ask, mentors, search, fallback) for both providers |
-| Provider Switching | Toggle between Gemini and OpenAI-compatible providers |
-| Service Management | Create/edit/delete/activate AI services with independent configs |
-| Lock Management | Add/remove mandatory channel join locks |
-| Data Export | Export aggregated usage data |
-| Token Leaders | Top users/groups by token consumption |
-| Connection Test | Test provider connectivity |
-| Token Dashboard | Real-time token usage per provider |
-
-Admin user IDs are hardcoded in `bot.py` (`self.admin_ids: List[int] = [8071301975]`).
+Admin user IDs are defined in `telegram/bot.py` (`self.admin_ids`).
 
 ---
 
 ## Optional Modules
 
-### Trade Journal
+### 📓 Trade Journal
 
-A full-featured trade logging and analysis system:
+A complete trade logging and analysis product, registered automatically on startup via
+`trade_journal.register_handlers()`.
 
-- **Trade entry** — Live form with templates, custom fields, symbol management
-- **Search** — Filter trades by date, symbol, outcome, template
-- **Statistics** — Win rate, profit factor, drawdown, Sharpe-like metrics
-- **Templates** — Custom field templates for consistent data entry
-- **AI analysis** — Gemini-powered pattern analysis of trade history
-- **Notifications** — Loss streak alerts, daily goal tracking, channel publishing
-- **Auto-backup** — Every 3 hours, keeps last 5 backups
+- **Templated entry** — live form with custom fields and symbol management
+- **Search** — filter trades by date, symbol, outcome, or template
+- **Statistics** — win rate, profit factor, drawdown, and Sharpe-like metrics
+- **Analysis** — model-powered pattern review of trade history
+- **Notifications** — loss-streak alerts, daily-goal tracking, channel publishing
+- **Auto-backup** — every 3 hours, retaining the last 5 backups
 
-Loaded automatically on startup via `trade_journal.register_handlers()`.
+### 📡 Channel Watcher
 
-### Channel Watcher
+Background monitoring of Telegram channels that surfaces only what matters, loaded automatically on
+startup and reading channels through a **separate Telethon user client**.
 
-AI-powered Telegram channel monitoring:
+- **Monitor setup** — pick a channel, set a check interval, choose an importance filter
+- **Importance classification** — a lightweight classifier decides what is worth analysing
+- **Full analysis** — deep content analysis with custom system prompts
+- **Delivery** — clean summary cards to a user PM or a group
+- **Per-monitor workers** — independent asyncio tasks on a 60-second cycle
+- **90-day retention** — old analyses are cleaned up automatically
 
-- **Monitor setup** — Select a channel, set check interval, configure importance filter
-- **Importance classification** — Uses Gemini classifier to filter messages by importance
-- **AI analysis** — Full content analysis with custom system prompts
-- **Delivery** — Summary cards sent to user's PM or a group
-- **Per-monitor background workers** — Independent asyncio tasks with 60-second check cycles
-- **90-day retention** — Automatic cleanup of old analyses
-- **User session** — Uses a separate Telethon user client for channel reading
-
-Loaded automatically on startup. Requires `CW_USER_PHONE` for the user client
-(and, under Telethon v2, a login code on first authentication plus
-`CW_USER_PASSWORD` if the account uses two-step verification).
+Requires `CW_USER_PHONE` (and a first-login code, plus `CW_USER_PASSWORD` if the account uses 2FA).
 
 ---
 
-## Telethon v2 Notes
+## Telethon v2 Foundation
 
-This project runs on **Telethon v2 (`2.0.0a0`)**, the full library rewrite from
-[LonamiWebs/Telethon@v2](https://github.com/LonamiWebs/Telethon). v2 changes a
-lot of surface API relative to the v1 line on PyPI. Rather than scatter those
-differences across the codebase, they are concentrated in a single
-compatibility layer, **`telethon_compat.py`**, which re-exports v2 under
-v1-friendly names and monkeypatches a few methods so the rest of the code reads
-almost like v1.
+This project runs on **Telethon v2 (`2.0.0a0`)**, the full rewrite from
+[LonamiWebs/Telethon@v2](https://github.com/LonamiWebs/Telethon). v2 changes a great deal of surface
+API relative to the v1 line on PyPI. Rather than scatter those differences across the codebase, they
+are concentrated in one compatibility layer, **`telethon_compat.py`**, which re-exports v2 under
+familiar names and monkeypatches a few methods.
 
-> **Golden rule:** import every Telethon symbol from `telethon_compat`, never
-> from `telethon` directly. (Notably, `filters` cannot be imported from
-> `telethon` at all in v2.)
+> **Golden rule:** import every Telethon symbol from `telethon_compat`, never from `telethon`
+> directly. (Notably, `filters` cannot be imported from `telethon` at all in v2.)
 
 ### What the compat layer provides
 
-`telethon_compat.py` re-exports and shims:
-
 - `TelegramClient` → v2 `Client`
-- `events`, `types`, `errors` (a factory — any error name resolves), `tl` (the
-  private raw API, `telethon._tl`), and `filters`
-- `InlineKeyboard` and a `Button` shim mapping `Button.inline/url/...` onto
-  v2's `types.buttons.*`
-- Common error aliases: `ChannelPrivateError`, `UsernameNotOccupiedError`,
-  `UserNotParticipantError`, `ChatAdminRequiredError`, `MessageIdInvalidError`,
-  `MessageNotModifiedError`, and more
-- Peer/entity helpers: `strip_channel_mark`, `user_ref`,
-  `channel_ref_from_stored_id`, `peer_ref_from_stored_id`, `_coerce_peer`
-- Event/filter helpers: `data_regex(...)`, `text_regex(...)`
-- A `typing_action(client, peer, interval=4.0)` async context manager (v2 removed
-  `client.action(...)`)
-- `photo_dedup_key(file_obj)` for de-duplicating photos (v2's `event.photo` is a
-  `File` with no `.id`)
-- Thin wrappers for `send_message` / `edit_message` / `send_file` /
-  `delete_messages` that absorb v2 signature changes
+- `events`, `types`, `errors` (any error name resolves), `tl` (the private raw API), and `filters`
+- `InlineKeyboard` and a `Button` shim mapping `Button.inline/url/…` onto `types.buttons.*`
+- Common error aliases (`ChannelPrivateError`, `UserNotParticipantError`, `MessageNotModifiedError`, …)
+- Peer/entity helpers (`strip_channel_mark`, `user_ref`, `channel_ref_from_stored_id`, …)
+- Event/filter helpers (`data_regex(...)`, `text_regex(...)`)
+- A `typing_action(client, peer)` async context manager (v2 removed `client.action(...)`)
+- `photo_dedup_key(file_obj)` for de-duplicating photos
+- Thin wrappers for `send_message` / `edit_message` / `send_file` / `delete_messages`
 
 ### Key v1 → v2 changes (absorbed by the compat layer)
 
 | Area | v1 | v2 |
 |------|----|----|
 | Client type | `TelegramClient` | `Client` (re-exported as `TelegramClient`) |
-| Startup | `client.start(...)` | explicit `connect()` + `is_authorized()` + `bot_sign_in()` / `request_login_code()` + `sign_in()` (+ `check_password()` for 2FA) |
-| Event loop | `client.loop` / `bot.loop.create_task` | `asyncio.create_task` |
+| Startup | `client.start(...)` | explicit `connect()` + `is_authorized()` + `bot_sign_in()` / `request_login_code()` + `sign_in()` |
 | Typing | `client.action(peer, "typing")` | `typing_action(client, peer)` context manager |
 | Callback event | `events.CallbackQuery(data=/pattern=)` | `events.ButtonCallback` + `filters.Data(...)` / `data_regex(...)` |
-| Incoming filter | `events.NewMessage(incoming=True)` | `events.NewMessage, filters.Incoming()` (NewMessage has no public constructor) |
 | Parse mode | `parse_mode="html"` | per-call `html=` / `caption_html=` |
-| Buttons | `Button.inline/...`, `buttons=[[...]]` | `types.buttons.*`, `keyboard=InlineKeyboard([[...]])` |
-| Entities | marked IDs (`-100…`), `get_entity` | `PeerRef` model (`UserRef`/`ChannelRef`/`GroupRef`), `resolve_username(...)` |
-| Peer display name | `.title` | `.name` |
-| Message text | `raw_text` / `message` | `text` (compat keeps `.message`) |
-| Fetch history | `iter_messages(entity, min_id=)` | `get_messages(peer, limit)` — no `min_id`, filter `msg.id > last_id` manually |
-| Delete | `delete_messages(chat, id)` | `delete_messages(peer, [ids])` — list required |
+| Entities | marked IDs, `get_entity` | `PeerRef` model (`UserRef`/`ChannelRef`/`GroupRef`), `resolve_username(...)` |
 | Send file | `send_file([...], thumb=)` | single file, no `thumb=`; albums via `prepare_album()` |
 | Flood wait | `FloodWaitError.seconds` | `.value` |
 
-Full details, rationale, and gotchas are recorded in `MIGRATION_NOTES.md`. Every
-non-trivial migrated line carries an inline `# v2: <old> → <new>` comment so the
-reasoning stays close to the code.
+Full details live in `MIGRATION_NOTES.md`; every non-trivial migrated line carries an inline
+`# v2:` comment.
 
 ### Session compatibility (re-login required)
 
-The v2 session storage format is **not** compatible with v1 session files.
-On the first run under v2:
-
-- `bot.session` — the bot re-authenticates with its token and rewrites the file
-  in the v2 format (no user action needed beyond a valid `TELEGRAM_BOT_TOKEN`).
-- `channel_watcher_user.session` — the Channel Watcher user account performs a
-  fresh login: it requests a Telegram login code (entered interactively) and, if
-  two-step verification is enabled, a password (`CW_USER_PASSWORD`, or an
-  interactive prompt). After this one-time re-login the v2 session is cached.
-
-Do **not** delete these session files once re-created.
+The v2 session format is **not** compatible with v1 files. On the first v2 run, `bot.session` is
+rewritten from the bot token automatically, and `channel_watcher_user.session` performs a fresh
+login (code + optional 2FA password) before being cached. **Do not delete these session files once
+re-created.**
 
 ---
 
-## Internal Workflow
+## Engineering Notes
 
-### Startup Sequence
+### Breaking a circular import
 
-1. `telegram.py` reads environment variables, creates `TelegramBot` instance
-2. `TelegramBot.__init__()`:
-   - Initializes SQLite database (`DatabaseManager`)
-   - Creates the Telethon v2 client (`Client`, imported as `TelegramClient` from `telethon_compat`)
-   - Initializes data structures (sessions dict, sets, caches)
-   - Initializes `Gemini503Manager` singleton
-   - Binds and registers all event handlers
-3. `TelegramBot.run()`:
-   - Checks for missed 12-hour resets
-   - Connects and signs in the bot (v2 `connect()` + `bot_sign_in(token)`)
-   - Loads Trade Journal module
-   - Loads Channel Watcher module
-   - Starts background tasks: `_daily_reset_loop`, `_cleanup_stale_data_loop`
-   - Runs until disconnected
+`ToolEvent` is used by both `animator.py` and `api_http.py`. `api_http.py` imports it lazily via
+`_get_tool_event_class()` to break the cycle:
 
-### Message Processing Pipeline
-
-1. **Event received** → `pending_message_handler` (catch-all)
-2. **Pre-checks**:
-   - User blocked? → reject
-   - Group blocked? → reject
-   - Mandatory channels joined? → warning with join buttons
-   - Rate limits exceeded? → error with countdown
-3. **Session setup**:
-   - Get/create `AI_Service` for the user's active window
-   - Start `StatusAnimator` for animated progress
-4. **AI processing**:
-   - `AI_Service.handle_message()` → appends user message to history
-   - Resolves model from DB settings or service config
-   - Calls `generate_response()` with tool-call callback
-   - Individual tool calls: emit `ToolEvent` → animator updates progress
-   - Provider fallback: automatic on retryable errors
-5. **Response delivery** (`_send_response`):
-   - Priority 0: HTML booklet → send as document
-   - Priority 1: Image → send with caption
-   - Priority 2: Chart → send chart + text reply
-   - Priority 3: Text → edit loading message
-6. **Post-processing**:
-   - Save window session to database
-   - Update interaction timestamp (for second-verify)
-   - Trigger background summarization if needed
-
----
-
-## Important Implementation Notes
-
-### Circular Import Mitigation
-
-`ToolEvent` (used by both `animator.py` and `api_http.py`) is lazily imported in `api_http.py` via `_get_tool_event_class()` to break the circular dependency chain:
-
-```
+```text
 api_http → telegram.constants → telegram.__init__ → telegram.bot → api_http
 ```
 
-### Race Conditions Mitigated
+### Hardening & race conditions handled
 
-| Bug | Fix |
-|-----|-----|
-| #1 — Duplicate window creation | `BEGIN IMMEDIATE` before COUNT check |
-| #10 — Tight summarization spawn loops | 30-second cooldown via `_last_summarize_attempt` |
-| #21 — Summary overwrites new messages | Version-tracked: only persist if history unchanged |
-| #25 — Pending messages never evicted | Hourly cleanup loop for entries >24h old |
-| #32 — Sequential membership checks | `asyncio.gather` for concurrent checks |
-| #33 — No membership caching | 300-second TTL cache |
-| #31 — HTML usage leak on error | Increment after validation, decrement on error |
-| #26 — None message content from providers | `message.content or ""` fallback |
-| #12 — Repeated tool retries after failure | Track `failed_tool_names` set per iteration |
-| #6 — Pending files not cleaned up | `_cleanup_pending_files` on exception |
-| #8 — Empty image-only messages in history | Remove entire message instead of inserting `[{"text": ""}]` |
-| #13 — Persistent failure backoff | Reset failure counter on `MessageNotModifiedError` |
-| #27 — Duplicate chart generation | Chart generation only in wrapper, not in tools.py |
+| Concern | Mitigation |
+|---------|------------|
+| Duplicate window creation | `BEGIN IMMEDIATE` before the COUNT check |
+| Tight summarisation loops | 30-second cooldown via `_last_summarize_attempt` |
+| Summary overwriting new turns | Version-tracked — persist only if history is unchanged |
+| Pending messages never evicted | Hourly cleanup of entries older than 24h |
+| Sequential membership checks | `asyncio.gather` for concurrent checks + 300s TTL cache |
+| File/usage leaks on error | Increment after validation, decrement / clean up on failure |
+| Repeated tool retries | Track a `failed_tool_names` set per iteration |
 
-### Handler Registration Order
+### Handler registration order
 
-Callback patterns are matched by regex against the callback data. When two
-patterns share a prefix (e.g., `service_delete:` and `service_delete_confirm:`),
-the more specific pattern must be registered first. Negative lookaheads are used
-where ordering is insufficient.
-
-Under Telethon v2, events and filters are separate objects combined at
-registration time, and the old `events.CallbackQuery` type is now
-`events.ButtonCallback`. Regex-on-data is expressed through the compat helper
-`data_regex(...)` (a thin wrapper over `filters.Data`), so the registration
-reads:
+Callback patterns are matched by regex against callback data, so when two patterns share a prefix
+the more specific one is registered first (with negative lookaheads where ordering alone is not
+enough). Under v2, events and filters are separate objects combined at registration time; regex on
+data is expressed through the compat helper `data_regex(...)`:
 
 ```python
 from telethon_compat import events, data_regex
 
-# service_delete_confirm registered FIRST
+# more specific pattern first
 self.bot.on(events.ButtonCallback, data_regex(r"service_delete_confirm:"))(self.service_delete_confirm)
-# service_delete uses a negative lookahead
+# less specific uses a negative lookahead
 self.bot.on(events.ButtonCallback, data_regex(r"^service_delete:(?!confirm)"))(self.service_delete)
 ```
 
-> Always import Telethon symbols (`events`, `filters`, `types`, `errors`, `tl`,
-> `data_regex`, `text_regex`, …) from `telethon_compat`, never from `telethon`
-> directly — the compat layer is where the v1→v2 differences are absorbed.
+### Testing & logging
 
----
-
-## Limitations
-
-- **No formal test suite** — Testing is manual via Telegram
-- **Chart generation disabled by default** — Requires matplotlib/pandas; toggle `ENABLE_CHART_GENERATION = True` in `chart_generator.py`
-- **Single admin ID hardcoded** — Admin list is in `bot.py` line 112
-- **Trade Journal backup hardcoded** — Admin user ID for backups is hardcoded in `trade_journal/__init__.py`
-- **No webhook support** — Uses Telethon polling only (long-polling)
-- **Channel Watcher requires a user account** — Cannot read channels with bot tokens alone
-- **Market data limited to forex/crypto** — FCSAPI provides only these categories
-- **Persian-first UI** — Bot UI and AI responses are primarily in Persian
-
----
-
-## Known Issues
-
-- Image generation API (`freegen.app`) can be unreliable during high demand
-- FCSAPI has inherent data delays per timeframe (1m/5m real-time, 1D ~6h delay)
-- OpenAI-compatible providers may return `None` for `message.content` in tool-call-only responses
-- Channel Watcher user login is interactive on first authentication (Telethon v2
-  requests a login code, and a 2FA password if enabled). For headless/server
-  deployments, perform the first login interactively once, or set
-  `CW_USER_PASSWORD` and pipe the code in — after that the cached
-  `channel_watcher_user.session` is reused
+There is no formal test suite; testing is manual via Telegram. When contributing, exercise both
+quick-ask and mentor modes, all four tools, the rate limiter (by exhausting limits), and provider
+failover (by revoking keys). The root logger writes to stdout and `telegramAI.log`; module loggers
+write to `logs/telegram.log`, `logs/api_http.log`, and `logs/tools.log`.
 
 ---
 
 ## Troubleshooting
 
-### Bot won't start
+<details>
+<summary><b>Bot won't start — <code>TELEGRAM_API_ID/HASH/BOT_TOKEN must be set</code></b></summary>
 
-```
-RuntimeError: TELEGRAM_API_ID, TELEGRAM_API_HASH, and TELEGRAM_BOT_TOKEN must be set
-```
+Ensure a `.env` file exists in the project root with all three variables populated.
+</details>
 
-**Solution:** Ensure `.env` file exists in the project root with all three variables set.
+<details>
+<summary><b>Wrong Telethon version — <code>cannot import name 'Client' from 'telethon'</code></b></summary>
 
-### Wrong Telethon version installed
-
-```
-ImportError: cannot import name 'Client' from 'telethon'
-# or various AttributeError / "has no public constructor" errors at import time
-```
-
-**Solution:** You almost certainly have the PyPI v1 line installed. This project
-requires Telethon **v2** (`2.0.0a0`). Reinstall from the `v2` branch:
+You almost certainly have the PyPI v1 line installed. Reinstall v2 from the `v2` branch:
 
 ```bash
 pip uninstall -y telethon
@@ -915,76 +806,63 @@ pip install "git+https://github.com/LonamiWebs/Telethon.git@v2#subdirectory=clie
 python -c "import telethon; print(telethon.__version__)"   # expect 2.0.0a0
 ```
 
-If the wheel build fails with `No module named 'typing_extensions'`, install the
-build helpers first: `pip install typing_extensions setuptools wheel`, then retry.
+If the wheel build fails with `No module named 'typing_extensions'`, install
+`typing_extensions setuptools wheel` first, then retry.
+</details>
 
-### Session no longer valid after upgrading to v2
+<details>
+<summary><b>Account re-requests login after upgrading to v2</b></summary>
 
-```
-The bot / user account re-requests login on startup
-```
+Expected. The v2 session format differs from v1, so old session files are not reused. Let the bot
+re-authenticate once (bot token for `bot.session`; login code + optional `CW_USER_PASSWORD` for the
+Channel Watcher account). Do **not** delete the session files afterwards.
+</details>
 
-**Solution:** This is expected. The Telethon v2 session format differs from v1,
-so old `bot.session` / `channel_watcher_user.session` files are not reused. Let
-the bot re-authenticate once (bot token for `bot.session`; login code + optional
-`CW_USER_PASSWORD` for the Channel Watcher account). The new v2-format sessions
-are then cached and reused on subsequent runs. Do **not** delete these session
-files once they are re-created.
+<details>
+<summary><b><code>ModuleNotFoundError: No module named 'google.genai'</code></b></summary>
 
-### Dependency issues
+Run `pip install -r requirements.txt`. `google-genai` (imported as `from google import genai`) is a
+core dependency.
+</details>
 
-```
-ModuleNotFoundError: No module named 'google.genai'
-```
+<details>
+<summary><b>Market data returns <code>FCSAPI_TOKEN is not configured</code></b></summary>
 
-**Solution:** Run `pip install -r requirements.txt`. The `google-genai` library
-(the Google GenAI SDK, imported as `from google import genai`) is a core
-dependency.
+Set `FCSAPI_TOKEN` in `.env`. Get a token from [fcsapi.com](https://fcsapi.com).
+</details>
 
-### Market data tool returns errors
+<details>
+<summary><b>Image generation fails with <code>aiohttp is not installed</code></b></summary>
 
-```
-Error: FCSAPI_TOKEN is not configured
-```
+Run `pip install aiohttp aiofiles`.
+</details>
 
-**Solution:** Set `FCSAPI_TOKEN` in your `.env` file. Get a token from [fcsapi.com](https://fcsapi.com).
+<details>
+<summary><b>Bot is "online" but silent</b></summary>
 
-### Image generation fails
-
-```
-Error: aiohttp is not installed
-```
-
-**Solution:** Run `pip install aiohttp aiofiles`. These are optional dependencies for image generation.
-
-### "Bot is online" but no responses
-
-1. Check `logs/telegram.log` for errors
-2. Ensure the bot token is valid
-3. Verify the user hasn't been blocked (admin panel)
-4. Check if the user has joined all required channels
-
-### Provider fallback loops
-
-If a provider keeps failing and the bot falls back repeatedly:
-- Check `logs/api_http.log` for error patterns
-- Use `/arise` → Provider settings to switch the global provider manually
-- Reset failing keys in the admin panel
+Check `logs/telegram.log`; verify the token; confirm the user isn't blocked (admin console) and has
+joined every required channel.
+</details>
 
 ---
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make changes with type hints and docstrings
-4. Test manually via Telegram
-5. Submit a pull request
+1. Fork the repository.
+2. Create a change-specific feature branch.
+3. Make focused changes with type hints and docstrings.
+4. Test manually via Telegram (both modes, all tools, limits, failover).
+5. Open a pull request following the existing code style.
 
-Please follow the existing code style and patterns. Check the [Important Implementation Notes](#important-implementation-notes) section for common gotchas.
+See [Engineering Notes](#engineering-notes) for common gotchas — especially the compat-layer import
+rule and handler registration order.
 
 ---
 
 ## License
 
 Internal project. No public license specified.
+
+<div align="center">
+<sub>Crafted with care for traders who live in Telegram.</sub>
+</div>
