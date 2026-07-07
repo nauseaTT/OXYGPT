@@ -749,6 +749,26 @@ working style.
 | Coding | `coding` | Senior engineer — clean code, type hints, architecture-first |
 | DeepThink | `deepthink` | Analytical reasoning — steelman opposing views, structured, epistemically careful |
 
+### Reply-to-Ask (`/ask` on a replied message)
+
+When `/ask` is used as a **reply** to an existing message (with or without additional inline text),
+the bot enters a **stateless** one-shot analysis mode:
+
+1. **Reply chain resolution** — walks up to 5 levels of nested replies, collecting text and the first
+   image from each level.
+2. **Sender attribution** — each quoted block is prefixed with the original sender's @username and
+   display name so the model can distinguish between speakers:
+   ```
+   «««@username (Display Name): message text»»»
+   ```
+3. **Stateless processing** — a fresh `AI_Service` is created with no window binding and no persisted
+   history; the model receives a system suffix instructing it to answer in a general/third-person style.
+4. **Usage tracking** — requests still count against the user's quick-ask limit pool.
+5. **No retry button** — on failure, the user is asked to retype `/ask`.
+
+**Note:** if the replied message has no text or image content (sticker, voice, deleted message, etc.),
+the bot notifies the user instead of sending a blank query to the model.
+
 ---
 
 ## Support Assistant
