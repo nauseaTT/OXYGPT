@@ -271,6 +271,12 @@ class TelegramBot:
             "verify_qa_cancel_delete_cb": h.verify_qa_cancel_delete_cb,
             "verify_mentor_continue_cb": h.verify_mentor_continue_cb,
             "verify_mentor_reset_cb": h.verify_mentor_reset_cb,
+            "support_entry_cb": h.support_entry_cb,
+            "support_cmd": h.support_cmd,
+            "support_suggested_cb": h.support_suggested_cb,
+            "support_continue_cb": h.support_continue_cb,
+            "support_exit_cb": h.support_exit_cb,
+            "admin_toggle_support_cb": h.admin_toggle_support_cb,
         }
         for name, func in _handler_funcs.items():
             setattr(self, name, func.__get__(self, type(self)))
@@ -486,7 +492,12 @@ class TelegramBot:
             if matching_win:
                 self.db.set_active_window(user_id, matching_win["window_id"])
             else:
-                title = "سوال سریع" if mode == "quick_ask" else f"منتور {mentor_key}"
+                if mode == "quick_ask":
+                    title = "سوال سریع"
+                elif mode == "support":
+                    title = "🛟 پشتیبان هوشمند"
+                else:
+                    title = f"منتور {mentor_key}"
                 self.db.create_window(user_id, title, mode=mode, mentor_key=mentor_key)
                 windows = self.db.get_user_windows(user_id)
                 new_win = next((w for w in windows if w["mode"] == mode and w["mentor_key"] == mentor_key), None)
@@ -807,6 +818,7 @@ class TelegramBot:
         self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/albrooks"))(self.albrooks_cmd)
         self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/status"))(self.status_cmd)
         self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/help"))(self.help_cmd)
+        self.bot.on(events.NewMessage, filters.Incoming() & text_regex("/support"))(self.support_cmd)
         self.bot.on(events.ButtonCallback, filters.Data(b"admin_panel"))(self.admin_panel)
         self.bot.on(events.ButtonCallback, filters.Data(b"admin_refresh"))(self.admin_refresh)
         self.bot.on(events.ButtonCallback, filters.Data(b"admin_reset"))(self.admin_reset)
@@ -838,6 +850,15 @@ class TelegramBot:
         self.bot.on(events.ButtonCallback, data_regex(r"rename_win_start:"))(self.rename_win_start_cb)
         self.bot.on(events.ButtonCallback, filters.Data(b"back_to_main"))(self.back_to_main_cb)
 
+        # AI Support Assistant (see telegram/handlers/support.py). v2 style:
+        # exact-bytes callbacks use filters.Data(...); prefixed callbacks
+        # ("support_suggested:<idx>" and "Asupport_<uid>") use data_regex(...),
+        # the compat re.search-based matcher that mirrors v1's `pattern=`.
+        self.bot.on(events.ButtonCallback, filters.Data(b"support_entry"))(self.support_entry_cb)
+        self.bot.on(events.ButtonCallback, filters.Data(b"support_exit"))(self.support_exit_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"support_suggested:"))(self.support_suggested_cb)
+        self.bot.on(events.ButtonCallback, data_regex(r"Asupport_"))(self.support_continue_cb)
+
         self.bot.on(events.ButtonCallback, data_regex(r"^mentor_"))(self.generic_callback)
         self.bot.on(events.NewMessage, filters.Incoming())(self.pending_message_handler)
         self.bot.on(events.NewMessage, filters.Incoming())(self.inline_handler)
@@ -863,6 +884,7 @@ class TelegramBot:
         self.bot.on(events.ButtonCallback, data_regex(r"admin_bl_unblock_group:"))(self.admin_bl_unblock_group_cb)
         self.bot.on(events.ButtonCallback, filters.Data(b"admin_block_group_start"))(self.admin_block_group_start)
         self.bot.on(events.ButtonCallback, filters.Data(b"admin_token_leaders"))(self.admin_token_leaders)
+        self.bot.on(events.ButtonCallback, filters.Data(b"admin_toggle_support"))(self.admin_toggle_support_cb)
 
         # Provider management handlers
         self.bot.on(events.ButtonCallback, filters.Data(b"admin_providers"))(self.admin_providers)

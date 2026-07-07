@@ -137,7 +137,10 @@ class StatusAnimator:
         # Phase tracking
         self.phase_index: int = 0
         self.completed_phases: List[str] = []
-        self.current_phase_label: str = "تحلیل پیام"
+        # AI Support Assistant gets its own opening label instead of the
+        # generic "تحلیل پیام" — see _get_patience_message for the matching
+        # "still thinking" flavor text.
+        self.current_phase_label: str = "بررسی سوالت" if mentor_key == "support" else "تحلیل پیام"
 
         # Tool state
         self._current_tool: str = ""
@@ -451,6 +454,11 @@ class StatusAnimator:
     def _get_patience_message(self, elapsed: int) -> str:
         """Select a time-appropriate patience message for the current tool."""
         tool = self._current_tool if self._current_tool else "thinking"
+        # Support Assistant gets its own flavor of "still thinking" text
+        # while no tool is active — falls back to the generic tool-specific
+        # messages if the model actually invokes a tool (e.g. web search).
+        if not self._current_tool and self.mentor_key == "support":
+            tool = "support_thinking"
         messages = PATIENCE_MESSAGES.get(tool, PATIENCE_MESSAGES.get("thinking", []))
 
         selected = ""
