@@ -125,6 +125,7 @@ classified and summarised by an intelligent model.
 | 📓 **Trade Journal** | Templated trade entry, rich statistics, model-powered analysis, alerts, and channel publishing — with automatic backups. |
 | 📡 **Channel Watcher** | Background monitoring of Telegram channels with importance classification and full-content analysis, delivered as clean summary cards. |
 | 🎬 **Animated feedback** | A status animator turns every wait into a live, tool-aware progress message instead of a silent spinner. |
+| 🛟 **Smart support assistant** | A guided in-bot help mode that answers questions about using the bot, with suggested questions and short, self-clearing conversations — admin-toggleable. |
 
 ---
 
@@ -141,6 +142,7 @@ classified and summarised by an intelligent model.
 - Up to **5 independent conversation windows** per user, each with its own history and mode
 - Background auto-summarisation when a window grows past **5 messages / 15k tokens**
 - Usage-aware auto-downgrade to lighter models under global or per-user pressure
+- Guided **support assistant** mode (`/support`) with suggested questions, a per-conversation turn cap, and its own dedicated model setting
 
 </details>
 
@@ -749,6 +751,29 @@ working style.
 
 ---
 
+## Support Assistant
+
+A guided help mode that answers questions about how to use the bot itself — reachable from the
+**🛟 پشتیبان هوشمند** button on the main menu or via the `/support` command.
+
+- **Reuses the mentor pipeline** — window management, rate limiting, block checks, and the status
+  animator are shared with mentor conversations, so it needs no parallel infrastructure. Internally
+  it runs as a dedicated conversation mode (`mode="support"`) with its own system prompt from
+  `support_knowledge.py`.
+- **Suggested questions** — on entry the assistant offers a small, randomly sampled set of common
+  questions as quick-tap buttons, so users who don't know what to ask still get moving.
+- **Short, self-clearing conversations** — each support conversation is capped (see
+  `SUPPORT_MAX_TURNS`). When the cap is reached the window's history is wiped automatically, so the
+  next `/support` starts fresh and the window stays light.
+- **Dedicated model** — admins can point support at its own model via the `support_model` /
+  `openai_support_model` settings; if unset it falls back to the standard fallback model.
+- **Admin toggle** — the whole feature can be switched on or off from the admin console
+  (`support_assistant_enabled`); when off, entry is politely declined.
+- **Curation-based safety** — the assistant only ever sees curated, user-facing help content, so
+  there is no internal architecture, path, or credential information in its context to leak.
+
+---
+
 ## Rate Limits & Fair Use
 
 Per-user quotas within each 12-hour window (reset at **11:00** and **23:00** Tehran time):
@@ -795,7 +820,8 @@ Open with `/arise` (admin only).
 |------|--------------|
 | **Users** | List users, view usage, toggle tier (free/paid), reset limits, clear windows |
 | **Blocks** | Block/unblock users and groups with reason tracking |
-| **Models** | Configure models per mode (quick-ask, mentors, search, fallback) for both providers |
+| **Models** | Configure models per mode (quick-ask, mentors, search, fallback, support assistant) for both providers |
+| **Support** | Enable/disable the guided support assistant for all users |
 | **Providers** | Switch the global provider between Gemini and OpenAI-compatible |
 | **Services** | Create / edit / delete / activate OpenAI-compatible services |
 | **Locks** | Add/remove mandatory channel-join locks |

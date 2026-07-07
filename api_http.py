@@ -1791,7 +1791,9 @@ SUMMARY (Telegram HTML only):"""
         Args:
             user_message: The message sent by the user.
             role: The system instruction/role.
-            mode: The conversation mode ("quick_ask", "mentor", or "reply_ask").
+            mode: The conversation mode ("quick_ask", "mentor", "reply_ask",
+                or "support" — the AI Support Assistant, see
+                telegram/handlers/support.py and support_knowledge.py).
             on_status_change: Callback to update status messages.
             on_generation_start: Callback triggered when generation starts.
             on_tool_call: Callback invoked with a ``ToolEvent`` when a
@@ -1831,6 +1833,12 @@ SUMMARY (Telegram HTML only):"""
         # Get model from service config or DB settings
         if self.service_id and get_service_manager(self.db_manager).has_service(self.service_id):
             # Use service-specific models
+            # NOTE: "support" (AI Support Assistant) has no dedicated slot in
+            # ServiceManager's per-service model config, so it falls back to
+            # that service's "fallback" model_type — same as any other unlisted
+            # mode. Admins wanting a fully dedicated model for it should rely
+            # on the "support_model"/"openai_support_model" settings below,
+            # which apply whenever no custom service is assigned to the window.
             model_type = "quick_ask" if mode in ("quick_ask", "reply_ask") else ("mentors" if mode == "mentor" else "fallback")
             model_to_use = get_service_manager(self.db_manager).get_model(self.service_id, model_type)
             self.search_model = get_service_manager(self.db_manager).get_model(self.service_id, "search")
@@ -1841,6 +1849,8 @@ SUMMARY (Telegram HTML only):"""
                     model_to_use = self.db_manager.get_setting("openai_quick_ask_model", OPENAI_MODEL_FALLBACK)
                 elif mode == "mentor":
                     model_to_use = self.db_manager.get_setting("openai_mentors_model", OPENAI_MODEL_FALLBACK)
+                elif mode == "support":
+                    model_to_use = self.db_manager.get_setting("openai_support_model", OPENAI_MODEL_FALLBACK)
                 else:
                     model_to_use = self.db_manager.get_setting("openai_fallback_model", OPENAI_MODEL_FALLBACK)
             else:
@@ -1848,6 +1858,8 @@ SUMMARY (Telegram HTML only):"""
                     model_to_use = self.db_manager.get_setting("quick_ask_model", AI_MODEL_FALLBACK)
                 elif mode == "mentor":
                     model_to_use = self.db_manager.get_setting("mentors_model", AI_MODEL_FALLBACK)
+                elif mode == "support":
+                    model_to_use = self.db_manager.get_setting("support_model", AI_MODEL_FALLBACK)
                 else:
                     model_to_use = self.db_manager.get_setting("fallback_model", AI_MODEL_FALLBACK)
         else:

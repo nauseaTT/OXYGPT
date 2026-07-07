@@ -602,7 +602,7 @@ async def pending_message_handler(self: "TelegramBot", event: Any) -> None:
                          "/w", "/sw", "/new", "/clear",
                          "/ask", "/learn", "/code", "/deep",
                          "/micheal", "/daye", "/zeussy", "/albrooks",
-                         "/status", "/help",
+                         "/status", "/help", "/support",
                          "\U0001f4ca \u0698\u0648\u0631\u0646\u0627\u0644 \u0645\u0639\u0627\u0645\u0644\u0627\u062a"):
             return
 
@@ -1342,15 +1342,27 @@ async def pending_message_handler(self: "TelegramBot", event: Any) -> None:
                 # previous AI response so we can manage its buttons.
                 # Buttons are disabled during waiting state, restored
                 # on error, or collapsed on success (groups only).
+                #
+                # Support mode is the exception: its "entry" message (the
+                # welcome banner or a previous turn's answer) isn't a
+                # meaningful chat-history item worth keeping around with
+                # disabled buttons — just delete it so the new answer
+                # doesn't end up stacked underneath a stale banner.
                 if prev_ai_msg:
-                    if uid not in self.previous_ai_messages:
-                        self.previous_ai_messages[uid] = []
-                    # Save current buttons before they get modified
-                    try:
-                        current_buttons = prev_ai_msg.buttons or []
-                        self.previous_ai_messages[uid].append((prev_ai_msg, current_buttons))
-                    except Exception:
-                        pass
+                    if state.get("pending_mentor_key") == "support":
+                        try:
+                            await prev_ai_msg.delete()
+                        except Exception:
+                            pass
+                    else:
+                        if uid not in self.previous_ai_messages:
+                            self.previous_ai_messages[uid] = []
+                        # Save current buttons before they get modified
+                        try:
+                            current_buttons = prev_ai_msg.buttons or []
+                            self.previous_ai_messages[uid].append((prev_ai_msg, current_buttons))
+                        except Exception:
+                            pass
 
                 # ── Typing indicator ──────────────────────────────
                 # Lightweight "bot is typing" feedback before the
@@ -1411,25 +1423,36 @@ async def pending_message_handler(self: "TelegramBot", event: Any) -> None:
                     # it would be dead code.
 
                     if mentor_key:
-                        ai_service = self.get_ai_service(uid, mode="mentor", mentor_key=mentor_key, chat_id=chat_id)
-                        tlogger.debug(f"[FLOW DEBUG] >>> handle_message: uid={uid}, mode=mentor, mentor={mentor_key}")
+                        # "support" is not a trading mentor persona — it's the
+                        # AI Support Assistant mode (see telegram/handlers/support.py).
+                        # It reuses this same generic mentor pipeline (window,
+                        # rate-limit, animator) but resolves its own dedicated
+                        # model settings via mode="support" in AI_Service.handle_message.
+                        _conv_mode = "support" if mentor_key == "support" else "mentor"
+                        ai_service = self.get_ai_service(uid, mode=_conv_mode, mentor_key=mentor_key, chat_id=chat_id)
+                        tlogger.debug(f"[FLOW DEBUG] >>> handle_message: uid={uid}, mode={_conv_mode}, mentor={mentor_key}")
                         answer, tokens_used = await ai_service.handle_message(
                             user_message=text,
                             role=role,
-                            mode="mentor",
+                            mode=_conv_mode,
                             on_status_change=on_status_change,
                             on_generation_start=on_generation_start,
                             on_tool_call=on_tool_call,
                             image_data=image_data
                         )
                         tlogger.debug(f"[FLOW DEBUG] <<< handle_message done: answer_len={len(answer)}, pending_image={getattr(ai_service, 'pending_image_path', None)}")
-                        buttons = [
-                            [
-                                Button.inline("Tap For Talk", f"Amentors_{mentor_key}_{uid}".encode(), style="success"),
-                                Button.inline("🗂 انتخاب پنجره", f"select_window_panel:{uid}".encode(), style="primary")
-                            ],
-                            [Button.inline(f"👤 منتور: {mentor_key} | 🪙 {tokens_used:,}", b"place_holder")]
-                        ]
+                        if mentor_key == "support":
+                            from .support import build_support_turn_buttons
+                            buttons, _closing_note = build_support_turn_buttons(self, uid, ai_service, tokens_used)
+                            answer = f"{answer}{_closing_note}"
+                        else:
+                            buttons = [
+                                [
+                                    Button.inline("Tap For Talk", f"Amentors_{mentor_key}_{uid}".encode(), style="success"),
+                                    Button.inline("🗂 انتخاب پنجره", f"select_window_panel:{uid}".encode(), style="primary")
+                                ],
+                                [Button.inline(f"👤 منتور: {mentor_key} | 🪙 {tokens_used:,}", b"place_holder")]
+                            ]
                     else:
                         ai_service = self.get_ai_service(uid, mode="quick_ask", chat_id=chat_id)
                         tlogger.debug(f"[FLOW DEBUG] >>> handle_message: uid={uid}, mode=quick_ask")
@@ -1643,22 +1666,28 @@ async def retry_failed_handler(self: "TelegramBot", event: Any) -> None:
                 animator.update_tool(tool_event)
 
         if mentor_key:
-            ai_service = self.get_ai_service(uid, mode="mentor", mentor_key=mentor_key, chat_id=chat_id)
+            _conv_mode = "support" if mentor_key == "support" else "mentor"
+            ai_service = self.get_ai_service(uid, mode=_conv_mode, mentor_key=mentor_key, chat_id=chat_id)
             answer, tokens_used = await ai_service.handle_message(
                 user_message=text,
                 role=role,
-                mode="mentor",
+                mode=_conv_mode,
                 on_status_change=on_status_change,
                 on_generation_start=on_generation_start,
                 on_tool_call=on_tool_call
             )
-            buttons = [
-                [
-                    Button.inline("Tap For Talk", f"Amentors_{mentor_key}_{uid}".encode(), style="success"),
-                    Button.inline("🗂 انتخاب پنجره", f"select_window_panel:{uid}".encode(), style="primary")
-                ],
-                [Button.inline(f"👤 منتور: {mentor_key} | 🪙 {tokens_used:,}", b"place_holder")]
-            ]
+            if mentor_key == "support":
+                from .support import build_support_turn_buttons
+                buttons, _closing_note = build_support_turn_buttons(self, uid, ai_service, tokens_used)
+                answer = f"{answer}{_closing_note}"
+            else:
+                buttons = [
+                    [
+                        Button.inline("Tap For Talk", f"Amentors_{mentor_key}_{uid}".encode(), style="success"),
+                        Button.inline("🗂 انتخاب پنجره", f"select_window_panel:{uid}".encode(), style="primary")
+                    ],
+                    [Button.inline(f"👤 منتور: {mentor_key} | 🪙 {tokens_used:,}", b"place_holder")]
+                ]
         else:
             skill_data = get_skill(skill_key)
             ai_service = self.get_ai_service(uid, mode="quick_ask", chat_id=chat_id)

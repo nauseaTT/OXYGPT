@@ -53,6 +53,7 @@ from .admin import (
     activate_service,
     deactivate_service,
     cw_classifier_model_start,
+    admin_toggle_support_cb,
 )
 from .menu import (
     quickask_cb,
@@ -120,4 +121,11 @@ from .verify import (
     verify_qa_cancel_delete_cb,
     verify_mentor_continue_cb,
     verify_mentor_reset_cb,
+)
+from .support import (
+    support_entry_cb,
+    support_cmd,
+    support_suggested_cb,
+    support_continue_cb,
+    support_exit_cb,
 )

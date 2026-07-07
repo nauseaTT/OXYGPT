@@ -293,7 +293,12 @@ class DatabaseManager:
             # to match create_window()'s column list.  This matters because
             # the service_manager checks service_id for per-window routing;
             # NULL = use Gemini (the default provider).
-            title = "پنجره اصلی" if default_mode == "quick_ask" else f"منتور {default_mentor}"
+            if default_mode == "quick_ask":
+                title = "پنجره اصلی"
+            elif default_mode == "support":
+                title = "🛟 پشتیبان هوشمند"
+            else:
+                title = f"منتور {default_mentor}"
             cursor = conn.execute("""
                 INSERT INTO conversation_windows (user_id, title, history, is_active, mode, mentor_key, service_id)
                 VALUES (?, ?, '[]', 1, ?, ?, NULL)
