@@ -25,7 +25,16 @@ telethon @ git+https://github.com/LonamiWebs/Telethon.git@v2#subdirectory=client
 # The bot uses the NEW unified Google GenAI SDK (`from google import genai`,
 # `genai.Client(...)`), which is the `google-genai` package — NOT the legacy
 # `google-generativeai` package (`import google.generativeai as genai`).
-google-genai
+#
+# ⚠️  VERSION PIN (why this is capped): google-genai >= ~1.44 introduced the
+# `_interactions` submodule, whose generated TypedDicts use PEP 728's
+# `TypedDict(..., extra_items=...)`. That syntax only works on Python 3.13+
+# (or a typing_extensions build that supports it at runtime). On this image's
+# Python 3.12 base, importing those newer releases fails hard with:
+#     TypeError: _TypedDictMeta.__new__() got an unexpected keyword argument 'extra_items'
+# 1.10.0 is the last line that imports cleanly on 3.12 while still exposing the
+# APIs the bot relies on (genai.Client, google.genai.types, google.genai.errors).
+google-genai==1.10.0
 openai
 
 # ── Data / charts (charts are disabled by default, see chart_generator.py) ──
