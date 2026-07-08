@@ -307,12 +307,14 @@ async def _send_response(
     # ── 3. Plain Text ──
     try:
         await msg.edit(answer, parse_mode="html", buttons=buttons)
+        tlogger.info(f"Response delivered to {uid} via edit (len={len(answer)}).")
     except Exception as edit_err:
-        tlogger.error(f"Failed to edit message for {uid}: {edit_err}", exc_info=True)
+        tlogger.warning(f"Could not edit loading message for {uid} ({edit_err}); sending a new reply instead.")
         try:
             await event.reply(answer, parse_mode="html", buttons=buttons)
-        except Exception:
-            pass
+            tlogger.info(f"Response delivered to {uid} via reply (len={len(answer)}).")
+        except Exception as reply_err:
+            tlogger.error(f"Failed to deliver response to {uid}: {reply_err}", exc_info=True)
 
 
 # ── Handler Functions ─────────────────────────────────────────────────

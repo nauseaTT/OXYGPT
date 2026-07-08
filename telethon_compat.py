@@ -594,12 +594,42 @@ def _msg_sender_id(self):
 
     v2 streamlined `sender`/`input_sender`/`sender_id` into a single `.sender`
     peer (which has at least an `.id`). This shim restores the flat
-    `sender_id` int the app reads in ~231 places. Returns None if the event
-    carries no sender (rare; e.g. anonymous channel posts).
+    `sender_id` int the app reads in ~231 places.
+
+    IMPORTANT (the reason the bot ignored every private message): in v2,
+    ``Message.sender`` is derived purely from the raw ``from_id`` field, and
+    for an *incoming private message* Telegram leaves ``from_id`` unset — the
+    sender is implied by ``peer_id`` (the other side of a 1:1 chat). So
+    ``sender`` (and therefore the old ``sender_id``) came back ``None`` for
+    every DM, which made the whole message router bail out with ``uid=None``
+    and the bot never replied. We fall back to the raw ``from_id`` and then to
+    the private-chat ``peer_id`` (a ``PeerUser`` whose ``user_id`` IS the
+    sender) so DMs resolve to a real user id. Group/channel messages still
+    carry ``from_id`` and keep working unchanged. Returns ``None`` only for a
+    genuinely anonymous sender.
     (see migration guide: "Streamlined chat, input_chat and chat_id")
     """
     sender = getattr(self, "sender", None)
-    return sender.id if sender is not None else None
+    if sender is not None:
+        return sender.id
+
+    raw = getattr(self, "_raw", None)
+    # Prefer the explicit sender when present (groups/channels).
+    from_id = getattr(raw, "from_id", None) if raw is not None else None
+    uid = getattr(from_id, "user_id", None)
+    if uid is not None:
+        return uid
+
+    # Incoming DM: the sender is the private-chat peer. Only trust a PeerUser
+    # here — a PeerChat/PeerChannel peer_id would be the group, not a user.
+    peer = getattr(raw, "peer_id", None) if raw is not None else None
+    peer_uid = getattr(peer, "user_id", None)
+    if peer_uid is not None:
+        return peer_uid
+
+    # Last resort: the resolved chat, which in a 1:1 chat is the user itself.
+    chat = getattr(self, "chat", None)
+    return chat.id if chat is not None else None
 
 
 def _msg_chat_id(self):

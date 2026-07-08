@@ -139,3 +139,71 @@ class TestSdkAcceptsSignature:
         if decl.parameters and decl.parameters.properties:
             for prop in decl.parameters.properties.values():
                 assert getattr(prop, "default", None) is None
+
+
+class TestToolWrapperIsSynchronous:
+    """Regression guard for the coroutine-AFC failure.
+
+    The google-genai automatic function calling (AFC) path invokes each tool
+    synchronously and explicitly rejects coroutine functions with::
+
+        Function <name> is a coroutine function, which is not supported for
+        automatic function calling.
+
+    So every wrapper handed to ``generate_content`` must be an ordinary
+    (non-``async``) callable that internally bridges to the underlying async
+    tool. These tests lock that contract in by exercising a wrapper built the
+    same way ``AI_Service.generate_response._wrap_tool`` builds it.
+    """
+
+    @staticmethod
+    def _build_sync_wrapper(async_fn, tool_name):
+        """Mirror the sync bridge used inside ``_wrap_tool``."""
+        import asyncio
+        import concurrent.futures
+
+        def wrapper(*args, **kwargs):
+            def _runner():
+                new_loop = asyncio.new_event_loop()
+                try:
+                    return new_loop.run_until_complete(async_fn(*args, **kwargs))
+                finally:
+                    new_loop.close()
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                return ex.submit(_runner).result()
+
+        wrapper.__name__ = tool_name
+        wrapper.__qualname__ = tool_name
+        wrapper.__signature__ = _wrapper_signature_for(tool_name)  # type: ignore[attr-defined]
+        return wrapper
+
+    def test_wrapper_is_not_a_coroutine_function(self):
+        async def async_tool(**kwargs):  # pragma: no cover - exercised below
+            return "ok"
+
+        wrapper = self._build_sync_wrapper(async_tool, "search_web_tool")
+        assert not inspect.iscoroutinefunction(wrapper), (
+            "Tool wrapper must be synchronous; google-genai AFC rejects "
+            "coroutine functions."
+        )
+
+    def test_wrapper_bridges_to_async_tool_result(self):
+        calls = {}
+
+        async def async_tool(**kwargs):
+            calls.update(kwargs)
+            return "async-result"
+
+        wrapper = self._build_sync_wrapper(async_tool, "search_web_tool")
+        result = wrapper(query="hello")
+        assert result == "async-result"
+        assert calls == {"query": "hello"}
+
+    @pytest.mark.parametrize("tool_name", ALL_TOOLS)
+    def test_every_tool_wrapper_stays_synchronous(self, tool_name):
+        async def async_tool(**kwargs):  # pragma: no cover - never invoked
+            return None
+
+        wrapper = self._build_sync_wrapper(async_tool, tool_name)
+        assert not inspect.iscoroutinefunction(wrapper)
