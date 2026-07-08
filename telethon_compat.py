@@ -632,10 +632,45 @@ def _msg_sender_id(self):
     return chat.id if chat is not None else None
 
 
+def _marked_chat_id(chat):
+    """Return the v1-style *marked* chat id for a v2 chat peer.
+
+    v2 flattened chat ids: ``Group.id`` / ``Channel.id`` now return the bare
+    positive internal id (``self._raw.id``), whereas v1 exposed the *marked*
+    form — negative for anything that is not a 1:1 user chat:
+
+        * basic group        -> ``-id``
+        * channel/supergroup  -> ``-100<id>`` (i.e. ``-(1_000_000_000_000 + id)``)
+        * private (User)      ->  ``id`` (unchanged, positive)
+
+    The entire codebase (and the admin-entered group-block ids, which are
+    copied from Telegram in ``-100…`` form) relies on ``chat_id < 0`` to mean
+    "this is a group/channel". Returning the bare positive id silently broke
+    every one of those checks — group detection, group-block enforcement, the
+    ``pending_message`` continuation flow and group-only collapse all stopped
+    firing, so the bot appeared to ignore groups entirely. Reconstructing the
+    marked id here restores v1 semantics fleet-wide with zero handler changes.
+    """
+    if chat is None:
+        return None
+    cid = chat.id
+    if isinstance(chat, _types.Channel):
+        return -(1_000_000_000_000 + cid)
+    if isinstance(chat, _types.Group):
+        return -cid
+    # Private (User) chats keep their plain positive id.
+    return cid
+
+
 def _msg_chat_id(self):
-    """v2: v1 `message.chat_id` -> `message.chat.id` (chat always present in v2)."""
-    chat = getattr(self, "chat", None)
-    return chat.id if chat is not None else None
+    """v2: v1 `message.chat_id` -> a *marked* chat id (negative for groups).
+
+    See :func:`_marked_chat_id` — v2's ``chat.id`` is the bare positive id, but
+    the app expects the v1 marked convention where groups/channels are
+    negative. We reconstruct that here so all ``chat_id < 0`` group checks and
+    the ``-100…`` group-block lookups keep working exactly as before.
+    """
+    return _marked_chat_id(getattr(self, "chat", None))
 
 
 _Message.sender_id = property(_msg_sender_id)  # type: ignore[attr-defined]
@@ -984,12 +1019,25 @@ def _bc_sender_id(self) -> int:
 
 
 def _bc_chat_id(self) -> Optional[int]:
-    """v2: v1 `event.chat_id` on a callback -> id derived from `_raw.peer`."""
-    from telethon._impl.client.types.peer import peer_id  # local import: private helper
+    """v2: v1 `event.chat_id` on a callback -> *marked* id from `_raw.peer`.
+
+    Telethon's ``peer_id`` returns the bare positive id (``chat_id`` /
+    ``channel_id``), but the app expects the v1 marked convention (negative for
+    groups/channels — see :func:`_marked_chat_id`). We reconstruct it directly
+    from the raw peer so callback ``chat_id < 0`` group checks match the
+    message-side value and the group-block lookups stay consistent.
+    """
     try:
-        return peer_id(self._raw.peer)
+        peer = self._raw.peer
+        if isinstance(peer, _tltypes.PeerUser):
+            return peer.user_id
+        if isinstance(peer, _tltypes.PeerChat):
+            return -peer.chat_id
+        if isinstance(peer, _tltypes.PeerChannel):
+            return -(1_000_000_000_000 + peer.channel_id)
     except Exception:
-        return None
+        pass
+    return None
 
 
 def _bc_message_id(self) -> int:

@@ -552,3 +552,53 @@ class TestRawKeyboardDelivery:
 
 class _StopAfterCapture(Exception):
     """Sentinel raised by the capture client once the request is recorded."""
+
+
+# ── marked chat id (v2 bare id -> v1 negative marked id) ───────────────
+class TestMarkedChatId:
+    """`_marked_chat_id` must rebuild the v1 negative marked id from a v2 chat.
+
+    v2's ``Group.id`` / ``Channel.id`` return the bare positive internal id,
+    but the whole app detects groups with ``chat_id < 0`` and looks up blocked
+    groups by their ``-100…`` id. These tests pin the marking so group
+    detection and group-block enforcement keep working (Bug: bot ignored
+    groups).
+    """
+
+    def _group(self, cid):
+        from telethon import types as t
+        from telethon._impl.tl import types as tl
+        return t.Group._from_raw(None, tl.ChatEmpty(id=cid))
+
+    def _channel(self, cid):
+        from telethon import types as t
+        from telethon._impl.tl import types as tl
+        return t.Channel._from_raw(
+            tl.ChannelForbidden(
+                id=cid, access_hash=0, title="x",
+                broadcast=True, megagroup=False, until_date=None,
+            )
+        )
+
+    def test_none_is_none(self):
+        assert C._marked_chat_id(None) is None
+
+    def test_basic_group_is_negated(self):
+        assert C._marked_chat_id(self._group(4242)) == -4242
+
+    def test_broadcast_channel_gets_dash100(self):
+        assert C._marked_chat_id(self._channel(1234567890)) == -1001234567890
+
+    def test_group_marked_id_is_negative(self):
+        assert C._marked_chat_id(self._group(1)) < 0
+
+    def test_channel_marked_id_is_negative(self):
+        assert C._marked_chat_id(self._channel(1)) < 0
+
+    def test_roundtrip_group_via_strip(self):
+        marked = C._marked_chat_id(self._group(4242))
+        assert C.strip_channel_mark(marked) == 4242
+
+    def test_roundtrip_channel_via_strip(self):
+        marked = C._marked_chat_id(self._channel(1234567890))
+        assert C.strip_channel_mark(marked) == 1234567890
