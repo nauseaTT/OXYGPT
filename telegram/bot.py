@@ -128,6 +128,11 @@ class TelegramBot:
         self._agg_cache_time: Optional[datetime] = None
         self._classifier_service: Optional[AI_Service] = None
 
+        # Strong references to detached handler tasks (see `_detach`). Without
+        # this, tasks scheduled with asyncio.create_task could be collected
+        # before they finish. Entries remove themselves via a done-callback.
+        self._detached_tasks: Set[asyncio.Task] = set()
+
         # Load admin IDs from environment variable
         admin_ids_str = os.environ.get("ADMIN_IDS", "")
         if admin_ids_str:
@@ -768,6 +773,76 @@ class TelegramBot:
             f"🛡 <b>وضعیت محدودیت (80%):</b> {downgrade_status}\n"
         )
 
+    def _detach(self, handler: Any) -> Any:
+        """Wrap a slow handler so it runs in its own task, not inline.
+
+        Telethon v2 dispatches updates *sequentially*: its ``dispatch_next``
+        loop ``await``s each handler to completion before pulling the next
+        update off the queue. A handler that performs a long model generation
+        (10–60 s for a mentor turn, plus web-search / image tools) therefore
+        holds the single dispatcher hostage — while one user waits for an
+        answer, EVERY other user's messages and button taps queue up behind
+        it and the bot looks completely frozen ("the whole bot blocks"). This
+        is the classic "not fully async" symptom: the code *is* async, but the
+        heavy await sits directly on the dispatcher's critical path.
+
+        Wrapping the handler here schedules its real body with
+        ``asyncio.create_task`` and returns immediately, so the dispatcher is
+        free to process the next update concurrently. Per-user re-entrancy is
+        still guarded by ``self.processing_users`` inside each handler, so a
+        single user cannot start two overlapping generations, while different
+        users are now served in parallel.
+
+        Only genuinely long-running handlers are detached; fast callback/menu
+        handlers keep running inline so their ordering-sensitive registration
+        (the negative-lookahead callback prefixes) is untouched.
+        """
+        async def _wrapper(event: Any) -> None:
+            async def _runner() -> None:
+                try:
+                    await handler(event)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    tlogger.exception("detached handler crashed")
+
+            task = asyncio.create_task(_runner())
+            # Keep a strong reference until completion so the task is not
+            # garbage-collected mid-flight (see asyncio.create_task caveats).
+            self._detached_tasks.add(task)
+            task.add_done_callback(self._detached_tasks.discard)
+
+        return _wrapper
+
+    async def _run_message_pipeline(self, event: Any) -> None:
+        """Run the two catch-all message handlers in their original order.
+
+        In v1 (and in v2 with ``check_all_handlers=True``) both
+        ``pending_message_handler`` and ``inline_handler`` fire for every
+        incoming message, and ``inline_handler`` intentionally bails out when
+        ``pending_message_handler`` has already claimed the user via
+        ``processing_users``. That contract only holds if the two run
+        strictly in sequence. This wrapper preserves that sequencing inside a
+        single detached task, so we get the ordering guarantee AND keep the
+        heavy generation off the Telethon dispatcher's critical path.
+
+        A crash in ``pending_message_handler`` must not stop ``inline_handler``
+        from running (they handle disjoint message kinds), so each is guarded
+        independently.
+        """
+        try:
+            await self.pending_message_handler(event)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            tlogger.exception("pending_message_handler crashed")
+        try:
+            await self.inline_handler(event)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            tlogger.exception("inline_handler crashed")
+
     def _register_handlers(self) -> None:
         """Register all Telegram event handlers with the Telethon client.
 
@@ -860,13 +935,24 @@ class TelegramBot:
         self.bot.on(events.ButtonCallback, data_regex(r"Asupport_"))(self.support_continue_cb)
 
         self.bot.on(events.ButtonCallback, data_regex(r"^mentor_"))(self.generic_callback)
-        self.bot.on(events.NewMessage, filters.Incoming())(self.pending_message_handler)
-        self.bot.on(events.NewMessage, filters.Incoming())(self.inline_handler)
-        self.bot.on(events.ButtonCallback, data_regex("Amentors_"))(self.again_talk_mentor)
-        self.bot.on(events.ButtonCallback, data_regex("Aquickask_"))(self.again_talk_quickask)
+        # The two catch-all message handlers run the heavy generation pipeline (tens of
+        # seconds for a mentor turn). They share per-user state via
+        # `processing_users` and MUST keep their relative order
+        # (`pending_message_handler` first, then `inline_handler`) — the inline
+        # handler bails out if `pending_message_handler` already claimed the
+        # user. Detaching them as two independent tasks would interleave at the
+        # first `await` and break that ordering, so we register a single
+        # detached wrapper that awaits them in order inside one task. That task
+        # runs off the dispatcher's critical path, so a long generation for one
+        # user no longer freezes the bot for everyone else (see `_detach`).
+        self.bot.on(events.NewMessage, filters.Incoming())(
+            self._detach(self._run_message_pipeline)
+        )
+        self.bot.on(events.ButtonCallback, data_regex("Amentors_"))(self._detach(self.again_talk_mentor))
+        self.bot.on(events.ButtonCallback, data_regex("Aquickask_"))(self._detach(self.again_talk_quickask))
         self.bot.on(events.ButtonCallback, data_regex("clear_processing"))(self.clear_processing)
 
-        self.bot.on(events.ButtonCallback, data_regex(r"retry_failed:"))(self.retry_failed_handler)
+        self.bot.on(events.ButtonCallback, data_regex(r"retry_failed:"))(self._detach(self.retry_failed_handler))
         self.bot.on(events.ButtonCallback, data_regex(r"select_window_panel:"))(self.select_window_panel_handler)
         self.bot.on(events.ButtonCallback, data_regex(r"switch_window_inline:"))(self.switch_window_inline_handler)
 
