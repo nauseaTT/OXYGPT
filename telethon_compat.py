@@ -67,6 +67,26 @@ from telethon.types import (
 # `Button` base class.
 from telethon.types import buttons as _v2buttons
 
+# v2 keyboard-delivery workaround: the installed Telethon v2 alpha
+# (git commit 583cfa6b, the current head of the upstream `v2` branch) does NOT
+# actually deliver an inline keyboard to Telegram when it is passed through the
+# high-level `keyboard=` argument of `Client.send_message` /
+# `Message.reply` / `Message.respond` / `Client.edit_message`. The request that
+# reaches the wire serialises identically, yet the server renders no buttons.
+# Building the *same* `messages.sendMessage` / `messages.editMessage` request by
+# hand and invoking it directly (`await client(request)`) delivers the buttons
+# correctly. This was proven with side-by-side live sends (high-level path =
+# no buttons; raw-function path = buttons render). To keep every caller in the
+# codebase unchanged, the compat layer detects a keyboard and routes those
+# sends/edits through the raw functions below. Text-only messages keep using
+# the untouched high-level methods.
+from telethon._impl.tl import functions as _tlfns
+from telethon._impl.tl import types as _tltypes
+from telethon._impl.client.types import (
+    parse_message as _parse_message,
+    generate_random_id as _generate_random_id,
+)
+
 _logger = logging.getLogger("telethon_compat")
 
 # ---------------------------------------------------------------------------
@@ -277,6 +297,153 @@ def _resolve_caption_parse_mode(caption: Any, parse_mode: Any) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# 2b. Raw-function keyboard delivery (workaround for the v2 alpha bug)
+# ---------------------------------------------------------------------------
+# Why this exists: in the installed Telethon v2 alpha the high-level
+# `keyboard=` argument builds a `messages.sendMessage`/`messages.editMessage`
+# request whose `reply_markup` flag bit (0x4) is NEVER set during
+# serialisation, so the button payload is dropped and the server renders no
+# buttons. This was proven on the wire: the high-level request serialised to
+# `flags=0x2` with no markup bytes, while a hand-built raw request with the
+# same keyboard serialised to `flags=0x6` and carried the full
+# `ReplyInlineMarkup`. The raw request delivers buttons correctly.
+#
+# These helpers rebuild the request by hand and invoke it directly
+# (`await client(request)`), which is the only reliable way to attach an
+# inline keyboard with this Telethon build. They are used ONLY when a keyboard
+# is present; text-only sends/edits keep using the untouched high-level path.
+
+
+def _peer_input_and_ref(peer: Any):
+    """Return `(input_peer, peer_ref)` for a coerced peer.
+
+    `_coerce_peer` yields either a `*Ref` (which exposes `_to_input_peer()` and
+    `_ref`) or a concrete `Peer` (User/Group/Channel, which exposes `.ref`).
+    Both `messages.sendMessage` (needs an `InputPeer`) and
+    `Client._build_message_map` (needs a `PeerRef`) are fed from here.
+    """
+    ref = peer
+    if hasattr(peer, "ref") and isinstance(getattr(peer, "ref"), _PeerRef):
+        ref = peer.ref
+    input_peer = ref._to_input_peer()
+    return input_peer, ref
+
+
+def _entities_for(text_kw: dict):
+    """Turn a resolved `{text|html|markdown: ...}` dict into `(message, entities)`.
+
+    Mirrors what the high-level path does internally via `parse_message`, so the
+    raw request carries identical formatting entities.
+    """
+    text = text_kw.get("text")
+    html = text_kw.get("html")
+    markdown = text_kw.get("markdown")
+    if text is None and html is None and markdown is None:
+        return "", None
+    message, entities = _parse_message(
+        text=text, markdown=markdown, html=html, allow_empty=True
+    )
+    return message, entities
+
+
+async def _raw_send_message(client: Any, peer: Any, text_kw: dict, keyboard: Any,
+                            *, reply_to: Any = None, link_preview: bool = False):
+    """Send a message with an inline keyboard via the raw `messages.sendMessage`.
+
+    This bypasses the broken high-level `keyboard=` serialisation. `keyboard` is
+    a v2 keyboard object exposing `._raw` (a `ReplyMarkup`). Returns the same
+    kind of value the high-level `send_message` returns (a `Message`).
+    """
+    input_peer, ref = _peer_input_and_ref(peer)
+    message, entities = _entities_for(text_kw)
+    reply_to_obj = None
+    if reply_to is not None:
+        reply_to_obj = _tltypes.InputReplyToMessage(
+            reply_to_msg_id=int(reply_to), top_msg_id=None
+        )
+    random_id = _generate_random_id()
+    request = _tlfns.messages.send_message(
+        no_webpage=not link_preview,
+        silent=False,
+        background=False,
+        clear_draft=False,
+        noforwards=False,
+        update_stickersets_order=False,
+        peer=input_peer,
+        reply_to=reply_to_obj,
+        message=message,
+        random_id=random_id,
+        reply_markup=keyboard._raw,
+        entities=entities,
+        schedule_date=None,
+        send_as=None,
+    )
+    result = await client(request)
+    # Mirror the high-level `send_message` return handling exactly. Private
+    # chats answer with `UpdateShortSentMessage` (which carries the new id but
+    # is not covered by `_build_message_map`), everything else goes through the
+    # message map keyed by our random id.
+    if isinstance(result, _tltypes.UpdateShortSentMessage):
+        from telethon.types import Message as _Msg
+        return _Msg._from_defaults(
+            client,
+            {},
+            out=result.out,
+            id=result.id,
+            from_id=(
+                _tltypes.PeerUser(user_id=client._session.user.id)
+                if client._session.user
+                else None
+            ),
+            peer_id=ref._to_peer(),
+            reply_to=(
+                _tltypes.MessageReplyHeader(
+                    reply_to_scheduled=False,
+                    forum_topic=False,
+                    reply_to_msg_id=int(reply_to),
+                    reply_to_peer_id=None,
+                    reply_to_top_id=None,
+                )
+                if reply_to
+                else None
+            ),
+            date=result.date,
+            message=message,
+            media=result.media,
+            entities=result.entities,
+            ttl_period=result.ttl_period,
+        )
+    return client._build_message_map(result, ref).with_random_id(random_id)
+
+
+async def _raw_edit_message(client: Any, peer: Any, message_id: int, text_kw: dict,
+                            keyboard: Any, *, link_preview: bool = False):
+    """Edit a message's inline keyboard via the raw `messages.editMessage`.
+
+    Bypasses the broken high-level `keyboard=` serialisation. When `text_kw`
+    carries no new body the existing text is left untouched (`message=None`).
+    """
+    input_peer, ref = _peer_input_and_ref(peer)
+    has_text = any(k in text_kw for k in ("text", "html", "markdown"))
+    if has_text:
+        message, entities = _entities_for(text_kw)
+    else:
+        message, entities = None, None
+    request = _tlfns.messages.edit_message(
+        no_webpage=not link_preview,
+        peer=input_peer,
+        id=int(message_id),
+        message=message,
+        media=None,
+        reply_markup=keyboard._raw,
+        entities=entities,
+        schedule_date=None,
+    )
+    result = await client(request)
+    return client._build_message_map(result, ref)
+
+
+# ---------------------------------------------------------------------------
 # 3. Monkeypatch Message.reply / .respond / .edit to accept v1 kwargs
 # ---------------------------------------------------------------------------
 # We keep references to the pristine v2 methods and wrap them. The wrappers
@@ -328,6 +495,19 @@ def _wrap_text_method(orig: Callable, positional_text: bool = True) -> Callable:
                 keyboard=call_kw.get("keyboard"),
                 reply_to=self.id,
             )
+        # A keyboard cannot be delivered through the high-level path on this
+        # Telethon build (see the 2b workaround above): rebuild the send by
+        # hand so the inline buttons actually reach the server. `reply` is a
+        # reply to this message; `respond` sends a fresh message to the chat.
+        if kb is not None:
+            text_kw = {k: v for k, v in call_kw.items()
+                       if k in ("text", "html", "markdown")}
+            is_reply = getattr(orig, "__name__", "") == "reply"
+            return await _raw_send_message(
+                self._client, _coerce_peer(self), text_kw, kb,
+                reply_to=self.id if is_reply else None,
+                link_preview=bool(call_kw.get("link_preview", False)),
+            )
         # Drop any leftover unknown kwargs quietly (v1 tolerated extras).
         return await orig(self, **call_kw)
 
@@ -366,6 +546,15 @@ async def _msg_edit_wrapper(self, text: Any = None, *, parse_mode: Any = None,
         call_kw["keyboard"] = kb
     if link_preview is not None:
         call_kw["link_preview"] = bool(link_preview)
+    # Editing in an inline keyboard requires the raw path on this Telethon
+    # build (the high-level `keyboard=` drops the markup); see workaround 2b.
+    if kb is not None:
+        text_kw = {k: v for k, v in call_kw.items()
+                   if k in ("text", "html", "markdown")}
+        return await _raw_edit_message(
+            self._client, _coerce_peer(self), self.id, text_kw, kb,
+            link_preview=bool(call_kw.get("link_preview", False)),
+        )
     return await _orig_msg_edit(self, **call_kw)
 
 
@@ -604,6 +793,17 @@ async def _client_send_message_wrapper(self, chat: Any, message: Any = None, *,
         call_kw["link_preview"] = bool(link_preview)
     if reply_to is not None:
         call_kw["reply_to"] = reply_to
+    # A keyboard cannot ride the high-level path on this Telethon build (the
+    # `reply_markup` flag is dropped during serialisation); rebuild the request
+    # by hand so the inline buttons reach the server. See workaround 2b.
+    if kb is not None:
+        text_kw = {k: v for k, v in call_kw.items()
+                   if k in ("text", "html", "markdown")}
+        return await _raw_send_message(
+            self, peer, text_kw, kb,
+            reply_to=reply_to,
+            link_preview=bool(call_kw.get("link_preview", False)),
+        )
     return await _orig_client_send_message(self, peer, **call_kw)
 
 
@@ -631,6 +831,15 @@ async def _client_edit_message_wrapper(self, chat: Any, message_id: Any = None, 
         call_kw["keyboard"] = kb
     if link_preview is not None:
         call_kw["link_preview"] = bool(link_preview)
+    # Editing in an inline keyboard requires the raw path on this Telethon
+    # build (the high-level `keyboard=` drops the markup); see workaround 2b.
+    if kb is not None:
+        text_kw = {k: v for k, v in call_kw.items()
+                   if k in ("text", "html", "markdown")}
+        return await _raw_edit_message(
+            self, peer, message_id, text_kw, kb,
+            link_preview=bool(call_kw.get("link_preview", False)),
+        )
     return await _orig_client_edit_message(self, peer, message_id, **call_kw)
 
 
