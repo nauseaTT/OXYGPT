@@ -28,6 +28,7 @@ import logging
 import base64
 import io
 import functools
+import inspect
 from datetime import datetime
 from PIL import Image
 from typing import List, Dict, Tuple, Optional, Any, Callable
@@ -1612,7 +1613,6 @@ SUMMARY (Telegram HTML only):"""
         """
 
         async def _wrap_tool(fn: Callable[..., Any], tool_name: str) -> Callable[..., Any]:
-            @functools.wraps(fn)
             async def wrapper(*args: Any, **kwargs: Any) -> Any:
                 if on_tool_call:
                     event = self._build_tool_event(tool_name, kwargs)
@@ -1635,6 +1635,56 @@ SUMMARY (Telegram HTML only):"""
                     return result.get("text", "")
 
                 return result
+
+            # The google-genai SDK builds the Gemini FunctionDeclaration by
+            # introspecting this callable with `inspect.signature`. The Gemini
+            # Developer API rejects any function-declaration schema whose
+            # parameters carry a `default` value ("Default value is not
+            # supported in function declaration schema for the Gemini API").
+            # Every real tool function has defaulted params (timeframe="1h",
+            # limit=80, ratio="4:3", enhance=True, …), so introspecting them
+            # directly makes the SDK emit `default` and the whole request 503s
+            # before it ever reaches the model — which is why the bot stopped
+            # answering. We therefore give the wrapper an explicit, default-free
+            # `__signature__` derived from the OpenAI tool schema (which is the
+            # single source of truth and already has no defaults). We copy the
+            # name/qualname/doc across manually instead of using
+            # `functools.wraps`, because `wraps` sets `__wrapped__`, and
+            # `inspect.signature` follows `__wrapped__` back to the original
+            # defaulted signature — defeating the fix.
+            wrapper.__name__ = tool_name
+            wrapper.__qualname__ = tool_name
+            schema = OPENAI_TOOL_SCHEMAS.get(tool_name, {})
+            fn_schema = schema.get("function", {})
+            wrapper.__doc__ = fn_schema.get("description") or (fn.__doc__ or "")
+            params_schema = fn_schema.get("parameters", {}) or {}
+            properties = params_schema.get("properties", {}) or {}
+            required = set(params_schema.get("required", []) or [])
+            _json_to_py = {
+                "string": str,
+                "integer": int,
+                "number": float,
+                "boolean": bool,
+                "array": list,
+                "object": dict,
+            }
+            sig_params = []
+            # Required params first, then optional — but NONE of them carry a
+            # `default`, so the generated schema stays Gemini-compatible while
+            # the model still learns which arguments are required.
+            for order in (True, False):
+                for pname, pschema in properties.items():
+                    if (pname in required) != order:
+                        continue
+                    annotation = _json_to_py.get(pschema.get("type"), inspect.Parameter.empty)
+                    sig_params.append(
+                        inspect.Parameter(
+                            pname,
+                            kind=inspect.Parameter.KEYWORD_ONLY,
+                            annotation=annotation,
+                        )
+                    )
+            wrapper.__signature__ = inspect.Signature(sig_params)  # type: ignore[attr-defined]
             return wrapper
 
         tools_list: List[Callable[..., Any]] = []
