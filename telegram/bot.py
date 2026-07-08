@@ -1087,6 +1087,55 @@ class TelegramBot:
         if not await self.bot.is_authorized():
             await self.bot.bot_sign_in(self.bot_token)
 
+        # ── Update dispatch bootstrap (critical) ─────────────────────────────
+        # In the installed Telethon v2 alpha the client only ever dispatches
+        # incoming updates once its internal `message_box` has a valid update
+        # state (the pts/qts/date sequence numbers). That state is seeded by an
+        # `updates.getState()` call inside `complete_login()` — but that call is
+        # wrapped in a bare `except Exception: pass`, so if it fails once (e.g.
+        # a transient "incorrect server salt" right after connect, which this
+        # bot hits routinely) the message_box is left empty and the client
+        # SILENTLY never delivers a single update: no /start, no "سلام",
+        # nothing reaches any handler. The dispatcher task is alive and the
+        # handlers are registered, yet the bot looks completely dead.
+        #
+        # We repair that here: if the message_box came up empty, seed it
+        # ourselves with a retried getState() (the retry rides out the salt
+        # resync). This is the difference between a bot that answers and one
+        # that ignores every message.
+        from telethon._impl.tl import functions as _tlf
+        try:
+            mb = getattr(self.bot, "_message_box", None)
+            needs_state = bool(mb and mb.is_empty())
+        except Exception:
+            needs_state = True
+        if needs_state:
+            for _attempt in range(5):
+                try:
+                    _state = await self.bot(_tlf.updates.get_state())
+                    self.bot._message_box.set_state(_state)
+                    self.bot._session.state = self.bot._message_box.session_state()
+                    try:
+                        await self.bot._storage.save(self.bot._session)
+                    except Exception:
+                        pass
+                    tlogger.info(
+                        f"Update state initialised on attempt {_attempt + 1}; "
+                        f"the bot will now receive messages."
+                    )
+                    break
+                except Exception as _state_err:
+                    tlogger.warning(
+                        f"updates.getState() attempt {_attempt + 1}/5 failed "
+                        f"({_state_err}); retrying so the bot can receive messages."
+                    )
+                    await asyncio.sleep(1.5)
+            else:
+                tlogger.error(
+                    "Could not initialise update state after 5 attempts; "
+                    "incoming messages may not be delivered."
+                )
+
         # Set bot client in 503 manager for notifications
         manager_503 = get_global_503_manager()
         if manager_503:

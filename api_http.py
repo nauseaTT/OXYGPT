@@ -1613,7 +1613,7 @@ SUMMARY (Telegram HTML only):"""
         """
 
         async def _wrap_tool(fn: Callable[..., Any], tool_name: str) -> Callable[..., Any]:
-            async def wrapper(*args: Any, **kwargs: Any) -> Any:
+            async def _run_async(*args: Any, **kwargs: Any) -> Any:
                 if on_tool_call:
                     event = self._build_tool_event(tool_name, kwargs)
                     await on_tool_call(event)
@@ -1635,6 +1635,30 @@ SUMMARY (Telegram HTML only):"""
                     return result.get("text", "")
 
                 return result
+
+            # The SDK's automatic function calling in google-genai 1.10.0 only
+            # supports PLAIN (synchronous) callables — it invokes them directly
+            # with `function_to_invoke(**args)` and explicitly rejects coroutine
+            # functions ("Function <name> is a coroutine function, which is not
+            # supported for automatic function calling"). Our real tools are all
+            # async, so the wrapper the SDK sees must be sync. It bridges to the
+            # async tool by running the coroutine to completion on a private
+            # event loop in a worker thread and blocking for the result. We
+            # can't reuse the running loop (`asyncio.run` / `run_until_complete`
+            # would raise because that loop is already running under us), and a
+            # separate thread keeps the SDK's synchronous call point happy.
+            def wrapper(*args: Any, **kwargs: Any) -> Any:
+                import concurrent.futures
+
+                def _runner():
+                    new_loop = asyncio.new_event_loop()
+                    try:
+                        return new_loop.run_until_complete(_run_async(*args, **kwargs))
+                    finally:
+                        new_loop.close()
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                    return ex.submit(_runner).result()
 
             # The google-genai SDK builds the Gemini FunctionDeclaration by
             # introspecting this callable with `inspect.signature`. The Gemini
