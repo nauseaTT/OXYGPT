@@ -459,3 +459,96 @@ class TestGetMessagesShim:
             assert result is sentinel
         finally:
             tc._orig_client_get_messages = orig
+
+
+# ── raw keyboard delivery (reply_markup flag regression) ───────────────
+# The installed Telethon v2 alpha drops the inline keyboard when it is passed
+# through the high-level `keyboard=` argument: the serialised
+# `messages.sendMessage` / `messages.editMessage` request comes out with the
+# `reply_markup` flag bit (0x4) UNSET and no markup payload, so the server
+# renders no buttons. The compat layer works around this by rebuilding the
+# request by hand and invoking it directly. These tests lock in that the raw
+# helpers really do set the `reply_markup` flag on the wire.
+class TestRawKeyboardDelivery:
+    _SEND_CID = "6f090d28"   # messages.sendMessage constructor id (little-endian)
+    _EDIT_CID = "7817f748"   # messages.editMessage constructor id (little-endian)
+
+    def _flags(self, request):
+        """Return the TL flags int of a serialised send/edit request."""
+        import struct
+        b = bytes(request)
+        return b[:4].hex(), struct.unpack("<I", b[4:8])[0]
+
+    class _CaptureClient:
+        """Minimal client stub that captures the request handed to __call__."""
+        def __init__(self):
+            self.captured = None
+            self._session = type("S", (), {"user": None})()
+
+        async def __call__(self, request):
+            self.captured = request
+            # Return something _build_message_map / UpdateShortSentMessage
+            # handling can accept without touching the network. We short-circuit
+            # by raising a sentinel the test catches, since we only care about
+            # the request that was built.
+            raise _StopAfterCapture()
+
+    @pytest.mark.asyncio
+    async def test_raw_send_sets_reply_markup_flag(self):
+        client = self._CaptureClient()
+        peer = C.user_ref(7)
+        kb = C._normalize_keyboard([[C.Button.inline("Go", b"go")]])
+        try:
+            await C._raw_send_message(client, peer, {"text": "hi"}, kb)
+        except _StopAfterCapture:
+            pass
+        cid, flags = self._flags(client.captured)
+        assert cid == self._SEND_CID
+        assert flags & 0x4, f"reply_markup bit not set (flags=0x{flags:x})"
+
+    @pytest.mark.asyncio
+    async def test_raw_edit_sets_reply_markup_flag(self):
+        client = self._CaptureClient()
+        peer = C.user_ref(7)
+        kb = C._normalize_keyboard([[C.Button.inline("Go", b"go")]])
+        try:
+            await C._raw_edit_message(client, peer, 42, {"text": "hi"}, kb)
+        except _StopAfterCapture:
+            pass
+        cid, flags = self._flags(client.captured)
+        assert cid == self._EDIT_CID
+        assert flags & 0x4, f"reply_markup bit not set (flags=0x{flags:x})"
+
+    @pytest.mark.asyncio
+    async def test_raw_send_carries_formatting_entities(self):
+        # The serialised request is a bytes-like object (no python attributes),
+        # so we assert the stripped body text landed in the wire payload. The
+        # entity extraction itself is unit-tested via `_entities_for` below.
+        client = self._CaptureClient()
+        peer = C.user_ref(7)
+        kb = C._normalize_keyboard([[C.Button.inline("Go", b"go")]])
+        try:
+            await C._raw_send_message(client, peer, {"html": "<b>hi</b> yo"}, kb)
+        except _StopAfterCapture:
+            pass
+        assert b"hi yo" in bytes(client.captured)
+
+    def test_entities_for_html_bold(self):
+        msg, ents = C._entities_for({"html": "<b>hi</b> yo"})
+        assert msg == "hi yo"
+        assert ents and ents[0].__class__.__name__ == "MessageEntityBold"
+
+    def test_peer_input_and_ref_from_ref(self):
+        ref = C.user_ref(7)
+        input_peer, out_ref = C._peer_input_and_ref(ref)
+        assert input_peer.__class__.__name__ == "InputPeerUser"
+        assert out_ref is ref
+
+    def test_entities_for_plain_text(self):
+        msg, ents = C._entities_for({"text": "plain"})
+        assert msg == "plain"
+        assert not ents
+
+
+class _StopAfterCapture(Exception):
+    """Sentinel raised by the capture client once the request is recorded."""
